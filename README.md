@@ -1,18 +1,43 @@
 # ⚽ Porra Mundial 2026
 
-Porra entre amigos para el **Mundial 2026**. Cada jugador entra con su email y
-contraseña, rellena sus pronósticos por fase y los envía. Tras cada partido se
-actualiza la clasificación. Una rutina diaria comprueba los resultados
-automáticamente y recalcula los puntos.
+Porra entre amigos para el **Mundial 2026**. Cada jugador entra con su **nombre
+de usuario** y contraseña, rellena sus pronósticos por fase y los envía. Tras
+cada partido se actualiza la clasificación. Una rutina diaria comprueba los
+resultados automáticamente y recalcula los puntos.
 
 - **Stack:** Next.js 14 (App Router, TypeScript) + Tailwind.
 - **BD + login:** Supabase (Postgres + Auth).
 - **Resultados:** football-data.org (plan gratuito, competición `WC`).
 - **Hosting + rutina diaria:** Vercel (plan Hobby gratuito + Vercel Cron).
 - **Coste:** 0 € para ~5 jugadores.
+- **Diseño mobile-first:** pensada para usarse sobre todo desde el móvil.
 
 Las 6 fases: **grupos → dieciseisavos (R32) → octavos (R16) → cuartos →
 semifinales → final**.
+
+---
+
+## Funcionalidades
+
+- **Login por nombre de usuario** (oscar, juanmi, …), sin necesidad de correos
+  reales. Internamente se mapea a `<usuario>@porra.local`
+  (ver [`lib/username.ts`](lib/username.ts)).
+- **Pronósticos por fase** con guardado de borrador y envío que bloquea la
+  edición. Cierre automático por fecha límite.
+- **Clasificación de grupo automática**: el orden de cada grupo se calcula solo
+  a partir de los marcadores pronosticados, con los **criterios de desempate
+  oficiales de la FIFA 2026** (ver [`lib/groupTable.ts`](lib/groupTable.ts)).
+- **Banderas** (SVG, vía `flag-icons`) y **nombres de países en español**
+  (ver [`lib/flags.ts`](lib/flags.ts)).
+- **Vista por jornadas** (`/jornadas`): qué pronosticó cada uno en cada partido,
+  con navegación por jornadas y centrada en la jornada actual/próxima.
+- **Privacidad de pronósticos** estricta: nadie ve los pronósticos de otros
+  hasta que se cierra la fase (o, en fase abierta, hasta que tanto tú como el
+  otro habéis enviado). El filtrado se hace en el servidor
+  ([`lib/predictionVisibility.ts`](lib/predictionVisibility.ts)).
+- **Clasificación general** + **estado de envíos** de cada jugador en la home.
+- **Panel admin** para abrir/cerrar fases, fijar deadlines, meter resultados a
+  mano y recalcular.
 
 ---
 
@@ -28,6 +53,12 @@ Definida en [`lib/scoring.ts`](lib/scoring.ts). Valores por defecto:
 
 Para cambiarlos: edita `SCORING` en `lib/scoring.ts`, vuelve a desplegar y pulsa
 **“Recalcular puntos ahora”** en el panel admin.
+
+> El orden de los grupos **no se elige a mano**: se deduce de los marcadores que
+> pronostica cada jugador, aplicando los desempates oficiales de la FIFA
+> (enfrentamiento directo → diferencia de goles directa → goles directos →
+> diferencia de goles global → goles globales). Lo mismo se usa para calcular el
+> orden real de cada grupo cuando terminan los partidos.
 
 ---
 
@@ -100,7 +131,7 @@ nuevos y actualiza los existentes).
 
 ```bash
 npm run check     # valida variables, conexión a Supabase, esquema, token...
-npm test          # tests de lib/scoring.ts
+npm test          # tests (puntuación, clasificación de grupos, privacidad, ...)
 ```
 
 `npm run check` te dice exactamente qué falta (variables, esquema sin aplicar,
@@ -169,10 +200,12 @@ curl -H "Authorization: Bearer TU_CRON_SECRET" \
 
 ```
 app/
-  login/                     ← pantalla de acceso
+  login/                     ← pantalla de acceso (por nombre de usuario)
   (app)/                     ← área logueada (con barra de navegación)
-    page.tsx                 ← inicio
+    page.tsx                 ← inicio: clasificación + jornada actual + estado
+    predicciones/            ← lista de fases con su estado
     predicciones/[fase]/     ← rellenar/enviar pronóstico de una fase
+    jornadas/                ← pronósticos por jornada (+ modo demo admin)
     clasificacion/           ← tabla general (la ven todos)
     reglas/                  ← puntuación y normas
   admin/                     ← panel del organizador (solo admin)
@@ -180,9 +213,20 @@ app/
     predicciones/            ← guardar/enviar (valida deadline y envío)
     cron/actualizar-resultados/  ← rutina diaria
     admin/                   ← abrir/cerrar fase, resultados, recálculo
+components/
+  NavBar / Flag / PredictionForm / GroupStandings   ← UI común
+  MatchdayView / MatchCard / HomeMatchdayCard       ← vista de jornadas
+  LeaderboardTable / PhaseProgress                  ← clasificación y estado
+  admin/                                            ← controles del panel admin
 lib/
   scoring.ts                 ← puntuación (única fuente de verdad) + tests
+  groupTable.ts              ← clasificación de grupo + desempates FIFA + tests
   recalc.ts                  ← recálculo de puntos y clasificación de grupos
+  predictionVisibility.ts    ← filtro de privacidad de pronósticos + tests
+  loadMatchdayData.ts        ← carga de datos de jornadas (server)
+  matchdays.ts               ← agrupar/ordenar jornadas
+  flags.ts                   ← banderas (ISO) + nombres en español
+  username.ts                ← login por usuario ↔ email interno
   footballdata.ts            ← cliente de football-data.org
   supabase/                  ← clientes (browser / server / admin) + middleware
 supabase/schema.sql          ← tablas + RLS + seed de fases
@@ -191,15 +235,26 @@ scripts/
   load-calendar.ts           ← carga del calendario
   check-setup.ts             ← verificación previa al despliegue
 vercel.json                  ← cron diario
+vitest.config.ts             ← config de tests
 ```
 
 ---
 
-## Seguridad (resumen)
+## Seguridad y privacidad (resumen)
 
-- **RLS activado** en todas las tablas: cada jugador solo escribe lo suyo;
-  todos pueden leer la clasificación.
+- **RLS activado** en todas las tablas: cada jugador solo escribe lo suyo.
+- **Privacidad de pronósticos:** nadie ve los pronósticos de otros hasta que se
+  cierra la fase. En fase abierta, solo ves los de un jugador si **ambos** habéis
+  enviado. El filtrado se aplica en el **servidor** antes de mandar nada al
+  cliente ([`lib/predictionVisibility.ts`](lib/predictionVisibility.ts)), así
+  que ningún pronóstico ajeno llega al navegador antes de tiempo.
 - La **service_role key** (salta RLS) solo vive en el servidor: cron, rutas de
   admin y scripts. Nunca se expone al navegador.
 - El **panel admin** está protegido por `is_admin` en el servidor.
 - El **cron** está protegido por `CRON_SECRET`.
+
+### Modo demo (solo admin)
+
+`/jornadas?demo=1` muestra una previsualización de la vista de jornadas **con
+jugadores y pronósticos ficticios** (nunca borradores reales). Útil para ver
+cómo quedará la página cuando se cierre una fase. Solo lo ve el admin.
