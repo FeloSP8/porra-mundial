@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertAdmin } from "@/lib/admin-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recalcAll, computeGroupResults } from "@/lib/recalc";
+import { recalcAll, computeGroupResults, recalcBracket } from "@/lib/recalc";
 
 /**
  * Fuerza un recálculo completo (sin llamar a football-data). Útil tras editar
@@ -15,5 +15,6 @@ export async function POST() {
   const admin = createAdminClient();
   const groups = await computeGroupResults(admin);
   const recalc = await recalcAll(admin);
-  return NextResponse.json({ ok: true, groups, recalc });
+  const bracket = await recalcBracket(admin);
+  return NextResponse.json({ ok: true, groups, recalc, bracket });
 }

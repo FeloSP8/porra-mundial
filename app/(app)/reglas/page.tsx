@@ -29,6 +29,37 @@ export default function ReglasPage() {
       </section>
 
       <section className="rounded-xl border bg-white p-5">
+        <h2 className="mb-1 font-semibold text-pitch">
+          🏆 Cuadro completo (puntos extra)
+        </h2>
+        <p className="text-sm text-slate-600">
+          Antes de que empiece el Mundial puedes rellenar también el{" "}
+          <b>cuadro completo</b> de eliminatorias hasta la final, incluido el
+          campeón. Este pronóstico es <b>aparte</b> y <b>suma</b> a todo lo
+          demás:
+        </p>
+        <ul className="mt-2 space-y-2">
+          <li className="flex items-center justify-between border-b pb-2">
+            <span>Cada cruce de eliminatoria cuyo ganador aciertes</span>
+            <span className="rounded-full bg-gold px-3 py-1 text-sm font-semibold text-slate-900">
+              +1 pt
+            </span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span>Acertar el campeón del Mundial</span>
+            <span className="rounded-full bg-gold px-3 py-1 text-sm font-semibold text-slate-900">
+              +1 pt
+            </span>
+          </li>
+        </ul>
+        <p className="mt-3 text-xs text-slate-500">
+          El cuadro vale poco a propósito (1 punto por acierto), para que no
+          genere demasiadas diferencias. Se rellena una sola vez y parte de tu
+          pronóstico de la fase de grupos.
+        </p>
+      </section>
+
+      <section className="rounded-xl border bg-white p-5">
         <h2 className="mb-3 font-semibold text-pitch">Cómo funciona la porra</h2>
         <ol className="list-decimal space-y-2 pl-5 text-slate-700">
           <li>

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchMatches, teamName, groupLabelOf } from "@/lib/footballdata";
-import { recalcAll, computeGroupResults } from "@/lib/recalc";
-import { STAGE_TO_PHASE } from "@/lib/constants";
+import { recalcAll, computeGroupResults, recalcBracket } from "@/lib/recalc";
+import { syncCalendar } from "@/lib/syncCalendar";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,49 +37,30 @@ async function run(request: Request) {
     .lt("deadline", nowIso)
     .eq("is_open", true);
 
-  // 2) Traer resultados de football-data.
-  const result = await fetchMatches("FINISHED");
-  if (!result.ok) {
-    // No abortamos del todo: recalculamos con lo que ya hay en BD
-    // (por si el admin metió resultados a mano).
-    log.footballDataError = result.error;
+  // 2) Sincronizar el calendario con football-data: actualiza marcadores Y
+  //    CREA los cruces de eliminatoria nuevos a medida que se confirman los
+  //    emparejamientos. Idempotente por external_id.
+  const sync = await syncCalendar(admin);
+  if (sync.error) {
+    // No abortamos: recalculamos con lo que ya hay en BD (por si el admin
+    // metió resultados a mano).
+    log.footballDataError = sync.error;
   } else {
-    // 3) Casar por external_id y actualizar marcadores.
-    let updated = 0;
-    for (const fm of result.matches) {
-      const home = fm.score?.fullTime?.home;
-      const away = fm.score?.fullTime?.away;
-      if (home === null || away === null) continue;
-
-      const { error, count } = await admin
-        .from("matches")
-        .update(
-          {
-            home_score: home,
-            away_score: away,
-            status: "FINISHED",
-            updated_at: new Date().toISOString(),
-          },
-          { count: "exact" }
-        )
-        .eq("external_id", fm.id);
-
-      if (!error && (count ?? 0) > 0) updated++;
-    }
-    log.matchesUpdatedFromApi = updated;
-    log.apiFinishedMatches = result.matches.length;
-    void teamName;
-    void groupLabelOf;
-    void STAGE_TO_PHASE;
+    log.calendar = {
+      created: sync.created,
+      updated: sync.updated,
+      skipped: sync.skipped,
+    };
   }
 
   // 5) Clasificación real de grupos completados.
   const groups = await computeGroupResults(admin);
   log.groups = groups;
 
-  // 6) Recalcular puntos.
+  // 6) Recalcular puntos (partidos/grupos + cuadro).
   const recalc = await recalcAll(admin);
   log.recalc = recalc;
+  log.bracket = await recalcBracket(admin);
 
   return NextResponse.json({ ok: true, ranAt: nowIso, ...log });
 }

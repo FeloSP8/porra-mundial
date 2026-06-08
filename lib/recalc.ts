@@ -6,6 +6,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { matchPoints, groupOrderPoints } from "./scoring";
 import { groupTable, rankMap, type TableMatch } from "./groupTable";
+import {
+  bracketPointsByRound,
+  type RoundKey,
+} from "./bracketScoring";
 
 /**
  * Recalcula points_awarded de TODAS las predicciones de partidos terminados,
@@ -150,4 +154,129 @@ export async function computeGroupResults(
   }
 
   return { groupsComputed };
+}
+
+/**
+ * Recalcula los puntos del CUADRO (bracket_predictions).
+ *
+ * Equipos REALES por ronda: derivados de los partidos KO ya disputados. Un
+ * equipo "alcanzó" una ronda si participa en un partido de esa stage:
+ *   LAST_16 → r16, QUARTER_FINALS → qf, SEMI_FINALS → sf, FINAL → final.
+ * El campeón real = ganador del partido FINAL terminado.
+ *
+ * Para cada jugador, sus equipos "avanzados" por ronda salen de
+ * bracket_predictions (round = r16|qf|sf|final|champion). Se da 1 punto por
+ * equipo que el jugador hizo avanzar a una ronda y que realmente la alcanzó.
+ */
+export async function recalcBracket(admin: SupabaseClient): Promise<{
+  bracketRowsUpdated: number;
+}> {
+  // 1) Equipos reales por ronda (de los partidos KO).
+  const { data: koMatches } = await admin
+    .from("matches")
+    .select("stage, home_team, away_team, home_score, away_score, status");
+
+  const realByRound: Record<RoundKey, Set<string>> = {
+    r16: new Set(),
+    qf: new Set(),
+    sf: new Set(),
+    final: new Set(),
+    champion: new Set(),
+  };
+  const stageToRound: Record<string, RoundKey> = {
+    LAST_16: "r16",
+    QUARTER_FINALS: "qf",
+    SEMI_FINALS: "sf",
+    FINAL: "final",
+  };
+
+  for (const m of koMatches ?? []) {
+    const round = stageToRound[m.stage as string];
+    if (!round) continue;
+    // Participar en un partido de esa stage = haber alcanzado esa ronda.
+    if (m.home_team) realByRound[round].add(m.home_team);
+    if (m.away_team) realByRound[round].add(m.away_team);
+    // Campeón = ganador del FINAL terminado.
+    if (
+      m.stage === "FINAL" &&
+      m.status === "FINISHED" &&
+      m.home_score !== null &&
+      m.away_score !== null
+    ) {
+      const champ =
+        m.home_score > m.away_score ? m.home_team : m.away_team;
+      if (champ) realByRound.champion.add(champ);
+    }
+  }
+
+  // 2) Por jugador, sus equipos avanzados por ronda (de bracket_predictions).
+  const { data: bp } = await admin
+    .from("bracket_predictions")
+    .select("id, user_id, round, team, points_awarded");
+
+  // Agrupar por usuario.
+  const byUser = new Map<
+    string,
+    { id: number; round: string; team: string; points: number }[]
+  >();
+  for (const row of bp ?? []) {
+    if (!byUser.has(row.user_id)) byUser.set(row.user_id, []);
+    byUser.get(row.user_id)!.push({
+      id: row.id,
+      round: row.round,
+      team: row.team,
+      points: row.points_awarded,
+    });
+  }
+
+  let bracketRowsUpdated = 0;
+
+  for (const [, rows] of byUser) {
+    // predictedByRound: equipos que el jugador hizo avanzar a cada ronda.
+    // - El ganador de un cruce r32 avanza a r16; de r16 a qf; etc.
+    //   Pero en bracket_predictions guardamos round = ronda del CRUCE.
+    //   El equipo que gana el cruce "r32" avanza a "r16", etc. Para puntuar por
+    //   ronda alcanzada, mapeamos: ganador de cruce de ronda X alcanza la ronda
+    //   siguiente. round 'final' → champion. round 'champion' → champion.
+    const predictedByRound: Record<RoundKey, Set<string>> = {
+      r16: new Set(),
+      qf: new Set(),
+      sf: new Set(),
+      final: new Set(),
+      champion: new Set(),
+    };
+    const advanceTo: Record<string, RoundKey | null> = {
+      r32: "r16",
+      r16: "qf",
+      qf: "sf",
+      sf: "final",
+      final: "champion",
+      champion: "champion",
+    };
+    for (const r of rows) {
+      const target = advanceTo[r.round];
+      if (target) predictedByRound[target].add(r.team);
+    }
+
+    const { perRound } = bracketPointsByRound(predictedByRound, realByRound);
+
+    // 3) Asignar puntos a cada fila: 1 si el equipo de esa fila alcanzó la
+    //    ronda a la que avanza. Recalculamos fila a fila para persistir.
+    void perRound;
+    for (const r of rows) {
+      const target = advanceTo[r.round];
+      const reached =
+        target && realByRound[target] ? realByRound[target].has(r.team) : false;
+      const pts = reached ? 1 : 0;
+      if (pts !== r.points) {
+        await admin
+          .from("bracket_predictions")
+          .update({ points_awarded: pts })
+          .eq("id", r.id);
+        bracketRowsUpdated++;
+      }
+    }
+  }
+
+  return { bracketRowsUpdated };
 }

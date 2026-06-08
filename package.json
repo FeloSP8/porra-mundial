@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "seed:users": "tsx scripts/seed-users.ts",
     "load:calendar": "tsx scripts/load-calendar.ts",
-    "check": "tsx scripts/check-setup.ts"
+    "check": "tsx scripts/check-setup.ts",
+    "migrate:bracket": "tsx scripts/migrate-bracket.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

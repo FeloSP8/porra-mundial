@@ -24,9 +24,20 @@ export default async function HomePage() {
     .eq("user_id", profile.id);
 
   const submittedPhaseIds = new Set((subs ?? []).map((s) => s.phase_id));
-  const openPhase = (phases ?? []).find((p: Phase) =>
-    phaseAcceptsSubmissions(p)
+
+  // La fase de partidos abierta (NO la virtual 'bracket').
+  const openPhase = (phases ?? []).find(
+    (p: Phase) => p.key !== "bracket" && phaseAcceptsSubmissions(p)
   );
+
+  // Estado del CUADRO (fase virtual 'bracket').
+  const bracketPhase = (phases ?? []).find((p: Phase) => p.key === "bracket");
+  const bracketOpen = bracketPhase
+    ? phaseAcceptsSubmissions(bracketPhase)
+    : false;
+  const bracketSubmitted = bracketPhase
+    ? submittedPhaseIds.has(bracketPhase.id)
+    : false;
 
   const matchdayData = await loadMatchdayData(profile.id);
 
@@ -72,6 +83,23 @@ export default async function HomePage() {
             Ahora mismo no hay ninguna fase abierta para enviar pronósticos.
             Cuando se abra la siguiente, aparecerá aquí.
           </p>
+        </div>
+      )}
+
+      {/* Aviso del CUADRO completo (si está abierto y aún no enviado) */}
+      {bracketOpen && !bracketSubmitted && (
+        <div className="rounded-xl border border-gold bg-yellow-50 p-5">
+          <p className="font-semibold">🏆 ¡Rellena tu cuadro hasta la final!</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Pronostica todo el cuadro de eliminatorias y el campeón. Suma 1 punto
+            extra por cada acierto. Se rellena una sola vez, antes de empezar.
+          </p>
+          <Link
+            href="/cuadro"
+            className="mt-3 block sm:inline-block w-full sm:w-auto text-center rounded-lg bg-pitch px-4 py-2.5 font-semibold text-white hover:opacity-90 transition"
+          >
+            Rellenar cuadro
+          </Link>
         </div>
       )}
 

@@ -16,13 +16,14 @@ export default async function LeaderboardTable({
 }) {
   const supabase = createClient();
 
-  const [{ data: profiles }, { data: preds }, { data: gsp }] =
+  const [{ data: profiles }, { data: preds }, { data: gsp }, { data: bracket }] =
     await Promise.all([
       supabase.from("profiles").select("id, display_name"),
       supabase.from("predictions").select("user_id, points_awarded"),
       supabase
         .from("group_standings_predictions")
         .select("user_id, points_awarded"),
+      supabase.from("bracket_predictions").select("user_id, points_awarded"),
     ]);
 
   type Row = {
@@ -30,6 +31,7 @@ export default async function LeaderboardTable({
     display_name: string;
     matchPoints: number;
     groupPoints: number;
+    bracketPoints: number;
     total: number;
   };
 
@@ -40,6 +42,7 @@ export default async function LeaderboardTable({
       display_name: p.display_name,
       matchPoints: 0,
       groupPoints: 0,
+      bracketPoints: 0,
       total: 0,
     };
   }
@@ -49,7 +52,11 @@ export default async function LeaderboardTable({
   for (const g of gsp ?? []) {
     if (rows[g.user_id]) rows[g.user_id].groupPoints += g.points_awarded ?? 0;
   }
-  for (const r of Object.values(rows)) r.total = r.matchPoints + r.groupPoints;
+  for (const b of bracket ?? []) {
+    if (rows[b.user_id]) rows[b.user_id].bracketPoints += b.points_awarded ?? 0;
+  }
+  for (const r of Object.values(rows))
+    r.total = r.matchPoints + r.groupPoints + r.bracketPoints;
 
   const ranking = Object.values(rows).sort((a, b) => b.total - a.total);
 
@@ -66,6 +73,7 @@ export default async function LeaderboardTable({
               <>
                 <th className={`${cellPad} text-right`}>Partidos</th>
                 <th className={`${cellPad} text-right`}>Grupos</th>
+                <th className={`${cellPad} text-right`}>Cuadro</th>
               </>
             )}
             <th className={`${cellPad} text-right`}>Total</th>
@@ -100,6 +108,7 @@ export default async function LeaderboardTable({
                   <>
                     <td className={`${cellPad} text-right`}>{r.matchPoints}</td>
                     <td className={`${cellPad} text-right`}>{r.groupPoints}</td>
+                    <td className={`${cellPad} text-right`}>{r.bracketPoints}</td>
                   </>
                 )}
                 <td className={`${cellPad} text-right text-lg`}>{r.total}</td>
@@ -109,7 +118,7 @@ export default async function LeaderboardTable({
           {ranking.length === 0 && (
             <tr>
               <td
-                colSpan={compact ? 3 : 5}
+                colSpan={compact ? 3 : 6}
                 className="px-4 py-6 text-center text-slate-400"
               >
                 Aún no hay jugadores.

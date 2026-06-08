@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 const LINKS = [
   { href: "/", label: "Inicio" },
   { href: "/predicciones", label: "Mis pronósticos" },
+  { href: "/cuadro", label: "Cuadro" },
   { href: "/jornadas", label: "Jornadas" },
   { href: "/clasificacion", label: "Clasificación" },
   { href: "/reglas", label: "Reglas" },

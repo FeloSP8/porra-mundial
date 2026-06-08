@@ -86,6 +86,23 @@ create table if not exists public.group_standings_predictions (
 create index if not exists idx_gsp_user on public.group_standings_predictions (user_id);
 
 -- ----------------------------------------------------------------------------
+--  PRONÓSTICO-CUADRO (bracket): pronóstico de TODO el cuadro de eliminatorias
+--  hasta la final, incluido el campeón. Se rellena una vez antes del Mundial.
+--  1 fila por jugador + slot del cuadro. (slot/round definidos en lib/bracket.ts)
+-- ----------------------------------------------------------------------------
+create table if not exists public.bracket_predictions (
+  id             bigint generated always as identity primary key,
+  user_id        uuid not null references public.profiles (id) on delete cascade,
+  slot           text not null,           -- hueco del cuadro (ver lib/bracket.ts)
+  round          text not null,           -- r32 | r16 | qf | sf | final | champion
+  team           text not null,           -- equipo que avanza a ese hueco
+  points_awarded int not null default 0,
+  unique (user_id, slot)
+);
+
+create index if not exists idx_bracket_user on public.bracket_predictions (user_id);
+
+-- ----------------------------------------------------------------------------
 --  ENVÍOS (marca que un jugador "envió" una fase → bloquea ediciones)
 -- ----------------------------------------------------------------------------
 create table if not exists public.submissions (
@@ -125,6 +142,7 @@ create table if not exists public.group_results (
 --  tu gusto en el panel admin.
 -- ----------------------------------------------------------------------------
 insert into public.phases (key, name, "order", deadline, is_open) values
+  ('bracket','Cuadro completo',             0, '2026-06-11T00:00:00Z', true),
   ('groups', 'Fase de grupos',              1, '2026-06-11T00:00:00Z', true),
   ('r32',    'Dieciseisavos (Ronda de 32)', 2, '2026-06-28T00:00:00Z', false),
   ('r16',    'Octavos (Ronda de 16)',       3, '2026-07-04T00:00:00Z', false),
@@ -174,6 +192,7 @@ alter table public.phases                       enable row level security;
 alter table public.matches                      enable row level security;
 alter table public.predictions                  enable row level security;
 alter table public.group_standings_predictions  enable row level security;
+alter table public.bracket_predictions          enable row level security;
 alter table public.submissions                  enable row level security;
 alter table public.group_results                enable row level security;
 
@@ -192,6 +211,9 @@ create policy "read predictions" on public.predictions for select to authenticat
 
 drop policy if exists "read gsp"        on public.group_standings_predictions;
 create policy "read gsp"        on public.group_standings_predictions for select to authenticated using (true);
+
+drop policy if exists "read bracket"    on public.bracket_predictions;
+create policy "read bracket"    on public.bracket_predictions for select to authenticated using (true);
 
 drop policy if exists "read submissions" on public.submissions;
 create policy "read submissions" on public.submissions for select to authenticated using (true);
@@ -222,6 +244,18 @@ create policy "update own gsp" on public.group_standings_predictions
 
 drop policy if exists "delete own gsp" on public.group_standings_predictions;
 create policy "delete own gsp" on public.group_standings_predictions
+  for delete to authenticated using (auth.uid() = user_id);
+
+drop policy if exists "insert own bracket" on public.bracket_predictions;
+create policy "insert own bracket" on public.bracket_predictions
+  for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "update own bracket" on public.bracket_predictions;
+create policy "update own bracket" on public.bracket_predictions
+  for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "delete own bracket" on public.bracket_predictions;
+create policy "delete own bracket" on public.bracket_predictions
   for delete to authenticated using (auth.uid() = user_id);
 
 drop policy if exists "insert own submissions" on public.submissions;

@@ -89,12 +89,12 @@ async function main() {
   if (phErr) {
     fail("no pude leer phases: " + phErr.message);
     hardError = true;
-  } else if ((phases?.length ?? 0) !== 6) {
+  } else if ((phases?.length ?? 0) !== 7) {
     warn(
-      `esperaba 6 fases y hay ${phases?.length ?? 0}. ¿Aplicaste schema.sql?`
+      `esperaba 7 fases (6 + cuadro) y hay ${phases?.length ?? 0}. ¿Aplicaste schema.sql?`
     );
   } else {
-    ok("6 fases presentes");
+    ok("7 fases presentes (6 + cuadro)");
   }
 
   // 4) Usuarios -------------------------------------------------------------

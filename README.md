@@ -35,9 +35,17 @@ semifinales → final**.
   hasta que se cierra la fase (o, en fase abierta, hasta que tanto tú como el
   otro habéis enviado). El filtrado se hace en el servidor
   ([`lib/predictionVisibility.ts`](lib/predictionVisibility.ts)).
-- **Clasificación general** + **estado de envíos** de cada jugador en la home.
+- **Cuadro completo (bracket):** pronóstico de toda la eliminatoria hasta la
+  final, incluido el campeón, que se rellena una vez antes del Mundial. Se
+  construye a partir de tu propio pronóstico de grupos. Suma **1 punto extra por
+  cada cruce acertado** (+1 por el campeón), aparte de lo demás. Ver
+  [`lib/bracket.ts`](lib/bracket.ts).
+- **Clasificación general** (Partidos + Grupos + Cuadro) + **estado de envíos**
+  de cada jugador en la home.
 - **Panel admin** para abrir/cerrar fases, fijar deadlines, meter resultados a
   mano y recalcular.
+- **Generación automática de cruces:** entre fases, el cron crea los partidos de
+  eliminatoria a medida que football-data confirma los emparejamientos.
 
 ---
 
@@ -230,10 +238,15 @@ lib/
   footballdata.ts            ← cliente de football-data.org
   supabase/                  ← clientes (browser / server / admin) + middleware
 supabase/schema.sql          ← tablas + RLS + seed de fases
+  bracket.ts                 ← estructura del cuadro + construcción desde grupos
+  bracketScoring.ts          ← puntuación del cuadro (1 pt/cruce + campeón)
+  syncCalendar.ts            ← crea/actualiza partidos desde football-data
+supabase/migration-bracket.sql  ← migración para activar el cuadro
 scripts/
   seed-users.ts              ← alta de jugadores
   load-calendar.ts           ← carga del calendario
   check-setup.ts             ← verificación previa al despliegue
+  migrate-bracket.ts         ← reset de envíos (parte de la migración del cuadro)
 vercel.json                  ← cron diario
 vitest.config.ts             ← config de tests
 ```

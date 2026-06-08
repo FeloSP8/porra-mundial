@@ -7,10 +7,12 @@ export default async function PrediccionesIndex() {
   const profile = await requireProfile();
   const supabase = createClient();
 
-  const { data: phases } = await supabase
+  const { data: phasesRaw } = await supabase
     .from("phases")
     .select("*")
     .order("order");
+  // Excluir la fase virtual 'bracket' (tiene su propia página /cuadro).
+  const phases = (phasesRaw ?? []).filter((p: Phase) => p.key !== "bracket");
 
   const { data: subs } = await supabase
     .from("submissions")
