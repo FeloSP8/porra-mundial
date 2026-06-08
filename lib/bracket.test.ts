@@ -22,6 +22,39 @@ describe("estructura del bracket", () => {
     expect(R32_MATCHES).toHaveLength(16);
   });
 
+  it("cubre cada posición exactamente una vez (sin duplicados ni huecos)", () => {
+    const groups = "ABCDEFGHIJKL".split("");
+    const winners: Record<string, number> = {};
+    const runners: Record<string, number> = {};
+    let thirds = 0;
+    for (const m of R32_MATCHES) {
+      for (const s of [m.home, m.away]) {
+        if (s.type === "winner") winners[s.group] = (winners[s.group] ?? 0) + 1;
+        else if (s.type === "runnerup")
+          runners[s.group] = (runners[s.group] ?? 0) + 1;
+        else thirds++;
+      }
+    }
+    // Cada uno de los 12 ganadores y 12 segundos aparece EXACTAMENTE una vez.
+    for (const g of groups) {
+      expect(winners[g], `ganador grupo ${g}`).toBe(1);
+      expect(runners[g], `segundo grupo ${g}`).toBe(1);
+    }
+    // Y exactamente 8 slots de tercero.
+    expect(thirds).toBe(8);
+  });
+
+  it("genera 32 equipos sin ninguno repetido (con un orden de grupos válido)", () => {
+    const r32 = buildR32FromGroups(fakeGroups());
+    const teams: string[] = [];
+    for (const m of R32_MATCHES) {
+      if (r32[m.id].home) teams.push(r32[m.id].home!);
+      if (r32[m.id].away) teams.push(r32[m.id].away!);
+    }
+    expect(teams).toHaveLength(32);
+    expect(new Set(teams).size).toBe(32); // ← cero duplicados
+  });
+
   it("los tamaños de ronda forman un árbol que reduce a la mitad", () => {
     expect(ROUND_SIZES).toEqual({ r32: 16, r16: 8, qf: 4, sf: 2, final: 1 });
   });
@@ -43,16 +76,19 @@ describe("estructura del bracket", () => {
 });
 
 describe("buildR32FromGroups", () => {
-  it("coloca ganadores y segundos de grupo en sus slots", () => {
+  it("coloca ganadores y segundos de grupo en sus slots (bracket oficial)", () => {
     const r32 = buildR32FromGroups(fakeGroups());
-    // r32-1: ganador A vs un tercero
-    expect(r32["r32-1"].home).toBe("A1");
-    // r32-2: segundo C vs segundo D
-    expect(r32["r32-2"].home).toBe("C2");
-    expect(r32["r32-2"].away).toBe("D2");
-    // r32-5: ganador F vs segundo C
-    expect(r32["r32-5"].home).toBe("F1");
-    expect(r32["r32-5"].away).toBe("C2");
+    // r32-1 = M74: ganador E vs un tercero
+    expect(r32["r32-1"].home).toBe("E1");
+    // r32-3 = M73: segundo A vs segundo B
+    expect(r32["r32-3"].home).toBe("A2");
+    expect(r32["r32-3"].away).toBe("B2");
+    // r32-4 = M75: ganador F vs segundo C
+    expect(r32["r32-4"].home).toBe("F1");
+    expect(r32["r32-4"].away).toBe("C2");
+    // r32-5 = M76: ganador C vs segundo F
+    expect(r32["r32-5"].home).toBe("C1");
+    expect(r32["r32-5"].away).toBe("F2");
   });
 
   it("rellena los slots de tercero con 8 equipos distintos", () => {

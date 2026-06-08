@@ -35,9 +35,15 @@ export type BracketSlot = {
  *   { type: "winner"|"runnerup", group: "A".."L" }  → equipo concreto del grupo
  *   { type: "third" }  → un slot de "mejor tercero" (se rellenan en orden)
  *
- * Estructura derivada del formato oficial: ganador de grupo vs tercero, o
- * segundo vs segundo. El emparejamiento concreto sigue el cuadro estándar del
- * Mundial 2026 (lados izquierdo/derecho que no se cruzan hasta la final).
+ * Bracket OFICIAL del Mundial 2026 (matches 73-88 de la Wikipedia/FIFA).
+ * Los partidos están ORDENADOS de modo que pares consecutivos (0-1, 2-3, …)
+ * forman cada cruce de la Ronda de 16, respetando el árbol oficial:
+ *   R16#1 = M74 vs M77, R16#2 = M73 vs M75, R16#3 = M76 vs M78,
+ *   R16#4 = M79 vs M80, R16#5 = M83 vs M84, R16#6 = M81 vs M82,
+ *   R16#7 = M86 vs M88, R16#8 = M85 vs M87.
+ *
+ * Cada ganador de grupo aparece 1 vez, cada segundo 1 vez, y hay 8 slots de
+ * "tercero" (los 8 mejores terceros). Verificado por bracket.test.ts.
  */
 type Source =
   | { type: "winner"; group: string }
@@ -45,29 +51,43 @@ type Source =
   | { type: "third" };
 
 export const R32_MATCHES: { id: string; home: Source; away: Source }[] = [
-  // --- Lado izquierdo ---
-  { id: "r32-1", home: { type: "winner", group: "A" }, away: { type: "third" } },
-  { id: "r32-2", home: { type: "runnerup", group: "C" }, away: { type: "runnerup", group: "D" } },
-  { id: "r32-3", home: { type: "winner", group: "E" }, away: { type: "third" } },
-  { id: "r32-4", home: { type: "runnerup", group: "A" }, away: { type: "runnerup", group: "B" } },
-  { id: "r32-5", home: { type: "winner", group: "F" }, away: { type: "runnerup", group: "C" } },
-  { id: "r32-6", home: { type: "winner", group: "C" }, away: { type: "runnerup", group: "F" } },
-  { id: "r32-7", home: { type: "winner", group: "I" }, away: { type: "third" } },
-  { id: "r32-8", home: { type: "runnerup", group: "E" }, away: { type: "runnerup", group: "I" } },
-  // --- Lado derecho ---
-  { id: "r32-9", home: { type: "winner", group: "B" }, away: { type: "third" } },
-  { id: "r32-10", home: { type: "winner", group: "L" }, away: { type: "third" } },
-  { id: "r32-11", home: { type: "winner", group: "H" }, away: { type: "runnerup", group: "J" } },
-  { id: "r32-12", home: { type: "winner", group: "J" }, away: { type: "runnerup", group: "H" } },
-  { id: "r32-13", home: { type: "winner", group: "K" }, away: { type: "third" } },
-  { id: "r32-14", home: { type: "runnerup", group: "K" }, away: { type: "runnerup", group: "L" } },
-  { id: "r32-15", home: { type: "winner", group: "D" }, away: { type: "third" } },
-  { id: "r32-16", home: { type: "winner", group: "G" }, away: { type: "third" } },
+  // r32-1 = M74 : W-E vs 3rd      ┐ R16#1
+  { id: "r32-1", home: { type: "winner", group: "E" }, away: { type: "third" } },
+  // r32-2 = M77 : W-I vs 3rd      ┘
+  { id: "r32-2", home: { type: "winner", group: "I" }, away: { type: "third" } },
+  // r32-3 = M73 : RU-A vs RU-B    ┐ R16#2
+  { id: "r32-3", home: { type: "runnerup", group: "A" }, away: { type: "runnerup", group: "B" } },
+  // r32-4 = M75 : W-F vs RU-C     ┘
+  { id: "r32-4", home: { type: "winner", group: "F" }, away: { type: "runnerup", group: "C" } },
+  // r32-5 = M76 : W-C vs RU-F     ┐ R16#3
+  { id: "r32-5", home: { type: "winner", group: "C" }, away: { type: "runnerup", group: "F" } },
+  // r32-6 = M78 : RU-E vs RU-I    ┘
+  { id: "r32-6", home: { type: "runnerup", group: "E" }, away: { type: "runnerup", group: "I" } },
+  // r32-7 = M79 : W-A vs 3rd      ┐ R16#4
+  { id: "r32-7", home: { type: "winner", group: "A" }, away: { type: "third" } },
+  // r32-8 = M80 : W-L vs 3rd      ┘
+  { id: "r32-8", home: { type: "winner", group: "L" }, away: { type: "third" } },
+  // r32-9 = M83 : RU-K vs RU-L    ┐ R16#5
+  { id: "r32-9", home: { type: "runnerup", group: "K" }, away: { type: "runnerup", group: "L" } },
+  // r32-10 = M84 : W-H vs RU-J    ┘
+  { id: "r32-10", home: { type: "winner", group: "H" }, away: { type: "runnerup", group: "J" } },
+  // r32-11 = M81 : W-D vs 3rd     ┐ R16#6
+  { id: "r32-11", home: { type: "winner", group: "D" }, away: { type: "third" } },
+  // r32-12 = M82 : W-G vs 3rd     ┘
+  { id: "r32-12", home: { type: "winner", group: "G" }, away: { type: "third" } },
+  // r32-13 = M86 : W-J vs RU-H    ┐ R16#7
+  { id: "r32-13", home: { type: "winner", group: "J" }, away: { type: "runnerup", group: "H" } },
+  // r32-14 = M88 : RU-D vs RU-G   ┘
+  { id: "r32-14", home: { type: "runnerup", group: "D" }, away: { type: "runnerup", group: "G" } },
+  // r32-15 = M85 : W-B vs 3rd     ┐ R16#8
+  { id: "r32-15", home: { type: "winner", group: "B" }, away: { type: "third" } },
+  // r32-16 = M87 : W-K vs 3rd     ┘
+  { id: "r32-16", home: { type: "winner", group: "K" }, away: { type: "third" } },
 ];
 
 /**
- * Árbol de avance: para cada ronda posterior, qué dos cruces previos alimentan
- * cada nuevo cruce (por índice). r16[k] = ganadores de r32[2k] y r32[2k+1], etc.
+ * Árbol de avance: pares consecutivos forman la ronda siguiente.
+ * r16[k] = ganadores de r32[2k] y r32[2k+1], qf[k] de r16[2k]/r16[2k+1], etc.
  */
 export const ROUND_SIZES: Record<Exclude<BracketRound, "champion">, number> = {
   r32: 16,
