@@ -54,7 +54,7 @@ export default function LoginPage() {
             autoCorrect="off"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-pitch focus:outline-none focus:ring-1 focus:ring-pitch"
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-pitch focus:outline-none focus:ring-1 focus:ring-pitch"
             placeholder="tu usuario"
           />
         </div>
@@ -68,7 +68,7 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-pitch focus:outline-none focus:ring-1 focus:ring-pitch"
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-pitch focus:outline-none focus:ring-1 focus:ring-pitch"
             placeholder="••••••••"
           />
         </div>

@@ -58,6 +58,31 @@ export default function PredictionForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Agrupar partidos por grupo (grupos) o mostrarlos en lista (eliminatorias)
+  const matchesByGroup = useMemo(() => {
+    const map: Record<string, Match[]> = {};
+    for (const m of matches) {
+      const key = m.group_label ?? "—";
+      (map[key] ??= []).push(m);
+    }
+    return map;
+  }, [matches]);
+
+  const groupKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const m of matches) {
+      if (m.group_label) keys.add(m.group_label);
+    }
+    return Array.from(keys).sort();
+  }, [matches]);
+
+  const [activeGroup, setActiveGroup] = useState<string>(() => {
+    if (isGroupPhase) {
+      return "A";
+    }
+    return "—";
+  });
+
   const filledCount = useMemo(
     () =>
       matches.filter(
@@ -134,16 +159,6 @@ export default function PredictionForm({
     }
   }
 
-  // Agrupar partidos por grupo (grupos) o mostrarlos en lista (eliminatorias)
-  const matchesByGroup = useMemo(() => {
-    const map: Record<string, Match[]> = {};
-    for (const m of matches) {
-      const key = m.group_label ?? "—";
-      (map[key] ??= []).push(m);
-    }
-    return map;
-  }, [matches]);
-
   return (
     <div className="space-y-6">
       <div>
@@ -188,56 +203,109 @@ export default function PredictionForm({
         </div>
       )}
 
-      {/* MARCADORES + (en grupos) tabla de clasificación en vivo por grupo */}
-      {Object.entries(matchesByGroup).map(([groupKey, ms]) => (
-        <section key={groupKey} className="rounded-xl border bg-white p-4">
-          {groupKey !== "—" && (
-            <h2 className="mb-3 font-semibold text-pitch">Grupo {groupKey}</h2>
-          )}
-          <ul className="space-y-2">
-            {ms.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2">
-                <span className="flex w-2/5 items-center justify-end gap-1.5 text-sm">
-                  <span className="truncate">{esName(m.home_team)}</span>
-                  <Flag team={m.home_team} />
-                </span>
-                <div className="flex items-center gap-1">
-                  <input
-                    inputMode="numeric"
-                    disabled={readOnly}
-                    value={scores[m.id]?.home ?? ""}
-                    onChange={(e) => setScore(m.id, "home", e.target.value)}
-                    className="w-10 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100"
-                  />
-                  <span className="text-slate-400">-</span>
-                  <input
-                    inputMode="numeric"
-                    disabled={readOnly}
-                    value={scores[m.id]?.away ?? ""}
-                    onChange={(e) => setScore(m.id, "away", e.target.value)}
-                    className="w-10 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100"
-                  />
-                </div>
-                <span className="flex w-2/5 items-center justify-start gap-1.5 text-sm">
-                  <Flag team={m.away_team} />
-                  <span className="truncate">{esName(m.away_team)}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
+      {/* SELECTOR DE GRUPOS (solo para fase de grupos) */}
+      {isGroupPhase && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
+          {groupKeys.map((gk) => {
+            const isActive = activeGroup === gk;
+            const groupMatches = matchesByGroup[gk] ?? [];
+            const groupFilledCount = groupMatches.filter(
+              (m) => scores[m.id]?.home !== "" && scores[m.id]?.away !== ""
+            ).length;
+            const groupAllFilled = groupFilledCount === groupMatches.length;
 
-          {/* Clasificación en vivo del grupo (solo fase de grupos) */}
-          {isGroupPhase && groupKey !== "—" && groupsTeams[groupKey] && (
-            <div className="mt-4 border-t pt-3">
-              <GroupStandings
-                label={groupKey}
-                teams={groupsTeams[groupKey]}
-                matches={tableMatchesForGroup(groupKey)}
-              />
-            </div>
-          )}
-        </section>
-      ))}
+            return (
+              <button
+                key={gk}
+                onClick={() => setActiveGroup(gk)}
+                type="button"
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition whitespace-nowrap border ${
+                  isActive
+                    ? "bg-pitch text-white border-pitch shadow-sm"
+                    : groupAllFilled
+                    ? "bg-green-50 text-emerald-800 border-emerald-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                Grupo {gk}
+                {groupFilledCount > 0 && (
+                  <span className={`ml-1 text-xs rounded-full px-1.5 py-0.5 ${
+                    isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                  }`}>
+                    {groupFilledCount}/{groupMatches.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MARCADORES + (en grupos) tabla de clasificación en vivo por grupo */}
+      {Object.entries(matchesByGroup).map(([groupKey, ms]) => {
+        // En fase de grupos, solo mostrar el grupo activo
+        if (isGroupPhase && groupKey !== activeGroup) return null;
+
+        return (
+          <section key={groupKey} className="rounded-xl border bg-white p-4">
+            {groupKey !== "—" && (
+              <h2 className="mb-3 font-semibold text-pitch">Grupo {groupKey}</h2>
+            )}
+            <ul className="space-y-3.5">
+              {ms.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-1 sm:gap-2">
+                  <span className="flex-1 flex items-center justify-end gap-1.5 text-sm min-w-0 text-right">
+                    <span className="truncate" title={esName(m.home_team)}>
+                      {esName(m.home_team)}
+                    </span>
+                    <Flag team={m.home_team} className="flex-shrink-0" />
+                  </span>
+
+                  <div className="flex-shrink-0 flex items-center gap-1 mx-1.5">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      disabled={readOnly}
+                      value={scores[m.id]?.home ?? ""}
+                      onChange={(e) => setScore(m.id, "home", e.target.value)}
+                      className="w-12 h-9 rounded border border-slate-300 px-1 text-center text-base disabled:bg-slate-100 focus:border-pitch focus:ring-1 focus:ring-pitch focus:outline-none transition"
+                    />
+                    <span className="text-slate-400 font-semibold">-</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      disabled={readOnly}
+                      value={scores[m.id]?.away ?? ""}
+                      onChange={(e) => setScore(m.id, "away", e.target.value)}
+                      className="w-12 h-9 rounded border border-slate-300 px-1 text-center text-base disabled:bg-slate-100 focus:border-pitch focus:ring-1 focus:ring-pitch focus:outline-none transition"
+                    />
+                  </div>
+
+                  <span className="flex-1 flex items-center justify-start gap-1.5 text-sm min-w-0 text-left">
+                    <Flag team={m.away_team} className="flex-shrink-0" />
+                    <span className="truncate" title={esName(m.away_team)}>
+                      {esName(m.away_team)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {/* Clasificación en vivo del grupo (solo fase de grupos) */}
+            {isGroupPhase && groupKey !== "—" && groupsTeams[groupKey] && (
+              <div className="mt-4 border-t pt-3">
+                <GroupStandings
+                  label={groupKey}
+                  teams={groupsTeams[groupKey]}
+                  matches={tableMatchesForGroup(groupKey)}
+                />
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       {error && (
         <p
@@ -252,18 +320,18 @@ export default function PredictionForm({
       )}
 
       {!readOnly && (
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button
             onClick={() => send(false)}
             disabled={busy}
-            className="rounded-lg border border-pitch px-4 py-2 font-semibold text-pitch transition hover:bg-pitch/5 disabled:opacity-50"
+            className="w-full sm:w-auto rounded-lg border border-pitch px-4 py-2.5 font-semibold text-pitch transition hover:bg-pitch/5 disabled:opacity-50 text-center"
           >
             Guardar borrador
           </button>
           <button
             onClick={() => send(true)}
             disabled={busy}
-            className="rounded-lg bg-pitch px-4 py-2 font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="w-full sm:w-auto rounded-lg bg-pitch px-4 py-2.5 font-semibold text-white transition hover:opacity-90 disabled:opacity-50 text-center"
           >
             {busy ? "Enviando…" : "Enviar pronóstico"}
           </button>

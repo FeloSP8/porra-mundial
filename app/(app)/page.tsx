@@ -2,6 +2,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { phaseAcceptsSubmissions, type Phase } from "@/lib/types";
+import PhaseProgress from "@/components/PhaseProgress";
+import LeaderboardTable from "@/components/LeaderboardTable";
+import HomeMatchdayCard from "@/components/HomeMatchdayCard";
+import { loadMatchdayData } from "@/lib/loadMatchdayData";
+
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const profile = await requireProfile();
@@ -22,6 +28,8 @@ export default async function HomePage() {
     phaseAcceptsSubmissions(p)
   );
 
+  const matchdayData = await loadMatchdayData(profile.id);
+
   return (
     <div className="space-y-6">
       <div>
@@ -29,11 +37,10 @@ export default async function HomePage() {
         <p className="text-slate-600">Bienvenido a la porra del Mundial 2026.</p>
       </div>
 
+      {/* Aviso de fase abierta con CTA */}
       {openPhase ? (
         <div className="rounded-xl border border-gold bg-yellow-50 p-5">
-          <p className="font-semibold">
-            🟢 Fase abierta: {openPhase.name}
-          </p>
+          <p className="font-semibold">🟢 Fase abierta: {openPhase.name}</p>
           <p className="mt-1 text-sm text-slate-600">
             {submittedPhaseIds.has(openPhase.id)
               ? "Ya has enviado tu pronóstico (puedes revisarlo)."
@@ -52,7 +59,7 @@ export default async function HomePage() {
           </p>
           <Link
             href={`/predicciones/${openPhase.key}`}
-            className="mt-3 inline-block rounded-lg bg-pitch px-4 py-2 font-semibold text-white hover:opacity-90"
+            className="mt-3 block sm:inline-block w-full sm:w-auto text-center rounded-lg bg-pitch px-4 py-2.5 font-semibold text-white hover:opacity-90 transition"
           >
             {submittedPhaseIds.has(openPhase.id)
               ? "Ver mi pronóstico"
@@ -68,26 +75,31 @@ export default async function HomePage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          href="/clasificacion"
-          className="rounded-xl border bg-white p-5 transition hover:shadow"
-        >
-          <p className="text-lg font-semibold">🏆 Clasificación</p>
-          <p className="text-sm text-slate-600">
-            Mira cómo va la porra entre todos.
-          </p>
-        </Link>
-        <Link
-          href="/predicciones"
-          className="rounded-xl border bg-white p-5 transition hover:shadow"
-        >
-          <p className="text-lg font-semibold">📋 Mis pronósticos</p>
-          <p className="text-sm text-slate-600">
-            Revisa tus pronósticos de cada fase.
-          </p>
-        </Link>
-      </div>
+      {/* Clasificación general */}
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-2">
+          <h2 className="text-lg font-semibold">🏆 Clasificación general</h2>
+          <Link
+            href="/clasificacion"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 whitespace-nowrap"
+          >
+            Detalle →
+          </Link>
+        </div>
+        <LeaderboardTable currentUserId={profile.id} compact />
+      </section>
+
+      {/* Jornada actual / próxima */}
+      <HomeMatchdayCard
+        matches={matchdayData.matches}
+        users={matchdayData.users}
+        predictions={matchdayData.predictions}
+        closedPhaseKeys={matchdayData.closedPhaseKeys}
+        currentUserId={profile.id}
+      />
+
+      {/* Estado de los pronósticos (de la fase abierta) */}
+      {openPhase && <PhaseProgress phase={openPhase} />}
     </div>
   );
 }

@@ -9,3 +9,12 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+/* Ocultar barra de desplazamiento pero mantener scroll activo */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

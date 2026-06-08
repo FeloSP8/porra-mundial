@@ -41,16 +41,16 @@ export default async function PrediccionesIndex() {
           const clickable = accepts || isSubmitted;
           const inner = (
             <div
-              className={`flex items-center justify-between rounded-xl border bg-white p-4 ${
+              className={`flex items-center justify-between gap-3 rounded-xl border bg-white p-4 ${
                 clickable ? "transition hover:shadow" : "opacity-60"
               }`}
             >
-              <div>
-                <p className="font-semibold">
+              <div className="min-w-0">
+                <p className="font-semibold truncate">
                   {phase.order}. {phase.name}
                 </p>
                 {phase.deadline && (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 truncate">
                     Cierre:{" "}
                     {new Date(phase.deadline).toLocaleString("es-ES", {
                       dateStyle: "medium",
@@ -60,7 +60,7 @@ export default async function PrediccionesIndex() {
                 )}
               </div>
               <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${badge.cls}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium flex-shrink-0 ${badge.cls}`}
               >
                 {badge.text}
               </span>
