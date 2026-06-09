@@ -4,26 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Flag from "@/components/Flag";
 import { esName } from "@/lib/flags";
-import TrophySvg from "@/components/TrophySvg";
-import {
-  R32_MATCHES,
-  ROUND_SIZES,
-  slotId,
-  type BracketRound,
-} from "@/lib/bracket";
-
-type Pairing = { home: string | null; away: string | null };
-
-const ROUND_LABELS: Record<BracketRound, string> = {
-  r32: "Dieciseisavos",
-  r16: "Octavos",
-  qf: "Cuartos",
-  sf: "Semifinales",
-  final: "Final",
-  champion: "Campeón",
-};
-
-const PLAYABLE_ROUNDS: BracketRound[] = ["r32", "r16", "qf", "sf", "final"];
+import BracketTree, { type Pairing } from "@/components/BracketTree";
+import { R32_MATCHES, ROUND_SIZES, slotId, type BracketRound } from "@/lib/bracket";
 
 export default function BracketView({
   initialR32,
@@ -42,7 +24,6 @@ export default function BracketView({
   const [picks, setPicks] = useState<Record<string, string>>(
     () => ({ ...initialPicks })
   );
-  const [activeRound, setActiveRound] = useState<BracketRound>("r32");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -50,23 +31,19 @@ export default function BracketView({
   // ganadores (picks) de la ronda anterior.
   const pairings = useMemo(() => {
     const byRound: Record<string, Pairing[]> = {};
-    // R32
-    byRound["r32"] = R32_MATCHES.map((m) => initialR32[m.id] ?? { home: null, away: null });
-    // Resto
+    byRound["r32"] = R32_MATCHES.map(
+      (m) => initialR32[m.id] ?? { home: null, away: null }
+    );
     const order: BracketRound[] = ["r16", "qf", "sf", "final"];
     let prevRound: BracketRound = "r32";
     for (const r of order) {
       const size = ROUND_SIZES[r as Exclude<BracketRound, "champion">];
-      const prev = byRound[prevRound];
       const arr: Pairing[] = [];
       for (let i = 0; i < size; i++) {
-        const homeSlot = slotId(prevRound, i * 2);
-        const awaySlot = slotId(prevRound, i * 2 + 1);
         arr.push({
-          home: picks[homeSlot] ?? null,
-          away: picks[awaySlot] ?? null,
+          home: picks[slotId(prevRound, i * 2)] ?? null,
+          away: picks[slotId(prevRound, i * 2 + 1)] ?? null,
         });
-        void prev;
       }
       byRound[r] = arr;
       prevRound = r;
@@ -74,34 +51,28 @@ export default function BracketView({
     return byRound;
   }, [initialR32, picks]);
 
-  // Total de cruces resueltos (para el progreso).
   const totalSlots = 16 + 8 + 4 + 2 + 1; // sin contar champion
   const resolved = useMemo(() => {
     let n = 0;
-    for (const r of PLAYABLE_ROUNDS) {
+    const rounds: BracketRound[] = ["r32", "r16", "qf", "sf", "final"];
+    for (const r of rounds) {
       const size =
         r === "final" ? 1 : ROUND_SIZES[r as Exclude<BracketRound, "champion">];
-      for (let i = 0; i < size; i++) {
-        if (picks[slotId(r, i)]) n++;
-      }
+      for (let i = 0; i < size; i++) if (picks[slotId(r, i)]) n++;
     }
     return n;
   }, [picks]);
 
-  const champion = picks["champion"] ?? picks["final"] ?? null;
+  const champion = picks["final"] ?? null;
 
   function pick(round: BracketRound, index: number, team: string | null) {
     if (readOnly || !team) return;
     const id = slotId(round, index);
     setPicks((prev) => {
       const next = { ...prev };
-      if (next[id] === team) return prev; // sin cambios
+      if (next[id] === team) return prev;
       next[id] = team;
-      // Al cambiar un ganador, invalidar los picks dependientes aguas abajo
-      // que dependían del valor anterior (se recalculan al re-render; aquí solo
-      // limpiamos picks de rondas siguientes que ya no sean válidos).
       invalidateDownstream(next, round, index);
-      // El campeón es el ganador de la final.
       if (round === "final") next["champion"] = team;
       return next;
     });
@@ -115,17 +86,16 @@ export default function BracketView({
       );
       return;
     }
-    // Asegurar champion = ganador de la final.
     const finalWinner = picks[slotId("final", 0)];
     const payloadPicks = Object.entries(picks)
       .filter(([slot]) => slot !== "champion")
-      .map(([slot, team]) => ({
-        slot,
-        round: roundOfSlot(slot),
-        team,
-      }));
+      .map(([slot, team]) => ({ slot, round: roundOfSlot(slot), team }));
     if (finalWinner) {
-      payloadPicks.push({ slot: "champion", round: "champion", team: finalWinner });
+      payloadPicks.push({
+        slot: "champion",
+        round: "champion",
+        team: finalWinner,
+      });
     }
 
     setBusy(true);
@@ -148,8 +118,6 @@ export default function BracketView({
     }
   }
 
-  const isFinal = activeRound === "final";
-
   return (
     <div className="space-y-5">
       <div>
@@ -162,9 +130,9 @@ export default function BracketView({
           </p>
         ) : (
           <p className="mt-1 text-sm text-slate-600">
-            El cuadro parte de tu pronóstico de grupos. Elige quién avanza en
-            cada cruce hasta coronar al campeón. Suma <b>1 punto por cada cruce
-            acertado</b> (+1 por el campeón), aparte de lo demás.
+            El cuadro parte de tu pronóstico de grupos. Pulsa la bandera del
+            equipo que avanza en cada cruce hasta coronar al campeón. Suma{" "}
+            <b>1 punto por cada cruce acertado</b> (+1 por el campeón).
           </p>
         )}
       </div>
@@ -191,84 +159,13 @@ export default function BracketView({
         </div>
       )}
 
-      {/* Selector de ronda */}
-      <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-          {PLAYABLE_ROUNDS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setActiveRound(r)}
-              className={`rounded-full border px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition ${
-                activeRound === r
-                  ? "bg-pitch text-white border-pitch shadow-sm"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {ROUND_LABELS[r]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Final destacada con trofeo */}
-      {isFinal && (
-        <div className="flex flex-col items-center gap-1 py-2">
-          <TrophySvg size={72} />
-          <p className="text-sm font-semibold text-slate-700">
-            El ganador de la final será tu campeón
-          </p>
-        </div>
-      )}
-
-      {/* Cruces de la ronda activa */}
-      <div className="space-y-3">
-        {pairings[activeRound]?.map((pair, i) => {
-          const id = slotId(activeRound, i);
-          const chosen = picks[id] ?? null;
-          return (
-            <div
-              key={id}
-              className={`rounded-xl border bg-white p-2 ${
-                isFinal ? "border-gold shadow-sm" : ""
-              }`}
-            >
-              <p className="mb-1 px-1 text-[11px] text-slate-400">
-                {ROUND_LABELS[activeRound]} · cruce {i + 1}
-              </p>
-              <div className="grid grid-cols-1 gap-1.5">
-                <TeamButton
-                  team={pair.home}
-                  selected={chosen === pair.home && !!pair.home}
-                  disabled={readOnly}
-                  onClick={() => pick(activeRound, i, pair.home)}
-                />
-                <TeamButton
-                  team={pair.away}
-                  selected={chosen === pair.away && !!pair.away}
-                  disabled={readOnly}
-                  onClick={() => pick(activeRound, i, pair.away)}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Campeón */}
-      {champion && (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-gold bg-yellow-50 p-4">
-          <TrophySvg size={40} />
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
-              Tu campeón
-            </p>
-            <p className="flex items-center gap-2 text-lg font-bold">
-              <Flag team={champion} /> {esName(champion)}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Árbol clásico */}
+      <BracketTree
+        pairings={pairings}
+        picks={picks}
+        readOnly={readOnly}
+        onPick={pick}
+      />
 
       {error && (
         <p
@@ -304,42 +201,6 @@ export default function BracketView({
   );
 }
 
-function TeamButton({
-  team,
-  selected,
-  disabled,
-  onClick,
-}: {
-  team: string | null;
-  selected: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  if (!team) {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-sm text-slate-400">
-        Por definir
-      </div>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
-        selected
-          ? "border-pitch bg-pitch/10 font-semibold"
-          : "border-slate-200 hover:bg-slate-50"
-      } ${disabled ? "cursor-default" : ""}`}
-    >
-      <Flag team={team} className="flex-shrink-0" />
-      <span className="truncate">{esName(team)}</span>
-      {selected && <span className="ml-auto text-pitch">✓</span>}
-    </button>
-  );
-}
-
 // --- helpers ---
 
 function roundOfSlot(slot: string): string {
@@ -349,12 +210,8 @@ function roundOfSlot(slot: string): string {
 }
 
 /**
- * Cuando cambia el ganador de un cruce, los cruces de rondas posteriores que
- * tenían colocado al equipo perdedor dejan de ser válidos. Limpia esos picks
- * aguas abajo de forma sencilla: elimina cualquier pick de ronda posterior cuyo
- * equipo ya no esté presente en los emparejamientos derivados. Como recalcular
- * el árbol completo aquí es costoso, hacemos una limpieza conservadora: borrar
- * los picks de TODAS las rondas posteriores al cruce cambiado.
+ * Al cambiar el ganador de un cruce, limpia los picks de TODAS las rondas
+ * posteriores (se recalcularán al elegir de nuevo). Conservador pero correcto.
  */
 function invalidateDownstream(
   picks: Record<string, string>,
@@ -363,14 +220,11 @@ function invalidateDownstream(
 ) {
   const order: BracketRound[] = ["r32", "r16", "qf", "sf", "final"];
   const ri = order.indexOf(round);
-  // Borra picks de rondas estrictamente posteriores.
   for (let k = ri + 1; k < order.length; k++) {
     const r = order[k];
     const size =
       r === "final" ? 1 : ROUND_SIZES[r as Exclude<BracketRound, "champion">];
-    for (let i = 0; i < size; i++) {
-      delete picks[slotId(r, i)];
-    }
+    for (let i = 0; i < size; i++) delete picks[slotId(r, i)];
   }
   delete picks["champion"];
   void index;

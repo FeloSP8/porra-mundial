@@ -2,13 +2,16 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { phaseAcceptsSubmissions, type Phase } from "@/lib/types";
-import { buildR32FromGroups, type ThirdStat } from "@/lib/bracket";
-import { groupTable, type TableMatch } from "@/lib/groupTable";
+import { loadPlayerBracket } from "@/lib/bracketData";
 import BracketView from "@/components/BracketView";
 
 export const dynamic = "force-dynamic";
 
-export default async function CuadroPage() {
+export default async function CuadroPage({
+  searchParams,
+}: {
+  searchParams: { jugador?: string };
+}) {
   const profile = await requireProfile();
   const supabase = createClient();
 
@@ -31,152 +34,140 @@ export default async function CuadroPage() {
     );
   }
 
-  // Orden de grupos pronosticado por el jugador (de group_standings_predictions).
-  const { data: gsp } = await supabase
-    .from("group_standings_predictions")
-    .select("group_label, team, predicted_rank")
-    .eq("user_id", profile.id);
+  const bracketClosed = !phaseAcceptsSubmissions(phase);
 
-  // rankByGroup: "A".."L" -> [1º,2º,3º,4º]
-  const rankByGroup: Record<string, string[]> = {};
-  for (const row of gsp ?? []) {
-    (rankByGroup[row.group_label] ??= [])[row.predicted_rank - 1] = row.team;
+  // ¿Quién ha enviado el cuadro? (para privacidad).
+  const { data: subsRaw } = await supabase
+    .from("submissions")
+    .select("user_id")
+    .eq("phase_id", phase.id);
+  const submittedSet = new Set((subsRaw ?? []).map((s) => s.user_id));
+  const iSubmitted = submittedSet.has(profile.id);
+
+  // Jugadores.
+  const { data: profilesRaw } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .order("display_name");
+  const players = (profilesRaw ?? []) as { id: string; display_name: string }[];
+
+  // ¿Puedo ver el cuadro de un jugador dado?
+  //  - el mío: siempre
+  //  - de otro: si la fase está cerrada, o si yo envié y él también
+  function canSee(userId: string): boolean {
+    if (userId === profile.id) return true;
+    if (bracketClosed) return true;
+    return iSubmitted && submittedSet.has(userId);
   }
 
-  const hasGroups = Object.keys(rankByGroup).length > 0;
+  // Jugador seleccionado (por query, por defecto yo).
+  const selectedId =
+    searchParams?.jugador &&
+    players.some((p) => p.id === searchParams.jugador)
+      ? searchParams.jugador
+      : profile.id;
+  const selectedPlayer = players.find((p) => p.id === selectedId)!;
+  const isSelf = selectedId === profile.id;
 
-  // ¿Ya envió el cuadro?
-  const { data: sub } = await supabase
-    .from("submissions")
-    .select("id")
-    .eq("user_id", profile.id)
-    .eq("phase_id", phase.id)
-    .maybeSingle();
-  const alreadySubmitted = !!sub;
-
-  // Picks previos (borrador).
-  const { data: bp } = await supabase
-    .from("bracket_predictions")
-    .select("slot, team")
-    .eq("user_id", profile.id);
-  const initialPicks: Record<string, string> = {};
-  for (const r of bp ?? []) initialPicks[r.slot] = r.team;
-
-  const readOnly = alreadySubmitted || !phaseAcceptsSubmissions(phase);
-
-  if (!hasGroups) {
-    return (
-      <div className="space-y-3">
-        <h1 className="text-2xl font-bold">🏆 Cuadro completo</h1>
-        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
-          El cuadro se construye a partir de tu pronóstico de la{" "}
-          <b>fase de grupos</b>. Primero rellena los marcadores de grupos (así se
-          calcula tu clasificación de cada grupo) y luego vuelve aquí.
-          <div className="mt-3">
+  // Selector de jugadores (chips). El propio + los demás (con candado si oculto).
+  const selector = players.length > 1 && (
+    <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none sm:flex-wrap sm:overflow-x-visible sm:mx-0 sm:px-0">
+        {players.map((p) => {
+          const visible = canSee(p.id);
+          const active = p.id === selectedId;
+          const label = p.id === profile.id ? "Tú" : p.display_name;
+          return (
             <Link
-              href="/predicciones/groups"
-              className="inline-block rounded-lg bg-pitch px-4 py-2 font-semibold text-white hover:opacity-90"
+              key={p.id}
+              href={`/cuadro?jugador=${p.id}`}
+              className={`rounded-full border px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition ${
+                active
+                  ? "bg-pitch text-white border-pitch shadow-sm"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+              }`}
             >
-              Ir a la fase de grupos
+              {label}
+              {!visible && <span className="ml-1 text-xs">🔒</span>}
             </Link>
-          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // Si no puedo ver el cuadro del jugador seleccionado.
+  if (!canSee(selectedId)) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">🏆 Cuadro completo</h1>
+        {selector}
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          El cuadro de <b>{selectedPlayer.display_name}</b> se mostrará cuando
+          cierre el plazo del cuadro
+          {!iSubmitted && <> (o cuando tú y esa persona hayáis enviado el vuestro)</>}
+          .
         </div>
       </div>
     );
   }
 
-  // Estadísticas de cada tercero (puntos/dif.goles/goles) recomputando las
-  // tablas de grupo desde los marcadores que pronosticó el jugador. Sirve para
-  // elegir los 8 MEJORES terceros por mérito (regla oficial), no por alfabeto.
-  const { thirdsStats, teamGroup } = await computeThirdsStats(
+  // Cargar el cuadro del jugador seleccionado.
+  const { hasGroups, initialR32, picks } = await loadPlayerBracket(
     supabase,
-    profile.id
+    selectedId
   );
 
-  const initialR32 = buildR32FromGroups(rankByGroup, thirdsStats, teamGroup);
+  // El cuadro propio es editable mientras la fase acepte envíos y no haya
+  // enviado; el de otros siempre es solo lectura.
+  const iAlreadySubmitted = submittedSet.has(profile.id);
+  const readOnly = !isSelf || iAlreadySubmitted || bracketClosed;
+
+  if (!hasGroups) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold">🏆 Cuadro completo</h1>
+        {selector}
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+          {isSelf ? (
+            <>
+              El cuadro se construye a partir de tu pronóstico de la{" "}
+              <b>fase de grupos</b>. Primero rellena los marcadores de grupos y
+              luego vuelve aquí.
+              <div className="mt-3">
+                <Link
+                  href="/predicciones/groups"
+                  className="inline-block rounded-lg bg-pitch px-4 py-2 font-semibold text-white hover:opacity-90"
+                >
+                  Ir a la fase de grupos
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              {selectedPlayer.display_name} aún no ha rellenado su pronóstico de
+              grupos, así que su cuadro todavía no existe.
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <BracketView
-      initialR32={initialR32}
-      initialPicks={initialPicks}
-      readOnly={readOnly}
-      alreadySubmitted={alreadySubmitted}
-    />
+    <div className="space-y-4">
+      {selector}
+      {!isSelf && (
+        <p className="text-sm text-slate-500">
+          Viendo el cuadro de <b>{selectedPlayer.display_name}</b>.
+        </p>
+      )}
+      <BracketView
+        initialR32={initialR32}
+        initialPicks={picks}
+        readOnly={readOnly}
+        alreadySubmitted={isSelf && iAlreadySubmitted}
+      />
+    </div>
   );
-}
-
-/**
- * Recomputa las tablas de grupo desde los marcadores pronosticados por el
- * jugador y devuelve, para cada equipo que queda 3º, sus estadísticas, además
- * de un mapa equipo->grupo.
- */
-async function computeThirdsStats(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
-): Promise<{
-  thirdsStats: Record<string, ThirdStat>;
-  teamGroup: Record<string, string>;
-}> {
-  // Partidos de la fase de grupos (con grupo y equipos).
-  const { data: groupsPhase } = await supabase
-    .from("phases")
-    .select("id")
-    .eq("key", "groups")
-    .single();
-
-  const { data: matchRows } = groupsPhase
-    ? await supabase
-        .from("matches")
-        .select("id, group_label, home_team, away_team")
-        .eq("phase_id", groupsPhase.id)
-        .not("group_label", "is", null)
-    : { data: [] as any[] };
-
-  const matchIds = (matchRows ?? []).map((m: any) => m.id);
-  const { data: preds } = matchIds.length
-    ? await supabase
-        .from("predictions")
-        .select("match_id, pred_home, pred_away")
-        .eq("user_id", userId)
-        .in("match_id", matchIds)
-    : { data: [] as any[] };
-  const predByMatch = new Map(
-    (preds ?? []).map((p: any) => [p.match_id, p])
-  );
-
-  // Construir, por grupo, los equipos y los TableMatch con los marcadores.
-  const byGroup: Record<
-    string,
-    { teams: Set<string>; matches: TableMatch[] }
-  > = {};
-  const teamGroup: Record<string, string> = {};
-  for (const m of matchRows ?? []) {
-    const g = (byGroup[m.group_label] ??= { teams: new Set(), matches: [] });
-    g.teams.add(m.home_team);
-    g.teams.add(m.away_team);
-    teamGroup[m.home_team] = m.group_label;
-    teamGroup[m.away_team] = m.group_label;
-    const p = predByMatch.get(m.id);
-    g.matches.push({
-      home_team: m.home_team,
-      away_team: m.away_team,
-      home_score: p ? p.pred_home : null,
-      away_score: p ? p.pred_away : null,
-    });
-  }
-
-  const thirdsStats: Record<string, ThirdStat> = {};
-  for (const [, g] of Object.entries(byGroup)) {
-    const table = groupTable([...g.teams], g.matches);
-    const third = table[2]; // 3ª posición
-    if (third) {
-      thirdsStats[third.team] = {
-        points: third.points,
-        gd: third.gd,
-        gf: third.gf,
-      };
-    }
-  }
-
-  return { thirdsStats, teamGroup };
 }

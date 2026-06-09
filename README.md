@@ -39,7 +39,10 @@ semifinales → final**.
   final, incluido el campeón, que se rellena una vez antes del Mundial. Se
   construye a partir de tu propio pronóstico de grupos. Suma **1 punto extra por
   cada cruce acertado** (+1 por el campeón), aparte de lo demás. Ver
-  [`lib/bracket.ts`](lib/bracket.ts).
+  [`lib/bracket.ts`](lib/bracket.ts). Se muestra como un **árbol clásico de
+  torneo** ([`components/BracketTree.tsx`](components/BracketTree.tsx)) y desde
+  `/cuadro` puedes **ver el de otros jugadores** (selector), respetando la
+  privacidad del bracket.
 - **Estadísticas por fase** (`/estadisticas`): curiosidades de los pronósticos
   (mayores goleadas, partidos de mayor/menor consenso, equipo favorito/víctima,
   el más unánime/polémico, media de goles, empatólogo, originalidad…) con
