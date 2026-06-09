@@ -8,9 +8,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  PieChart,
-  Pie,
-  Legend,
 } from "recharts";
 import Flag from "@/components/Flag";
 import { esName } from "@/lib/flags";
@@ -238,44 +235,6 @@ export default function StatsView({ stats }: { stats: Stats }) {
           ))}
         </ul>
       </Card>
-
-      {/* Reparto de opiniones del equipo más polémico (donut) */}
-      {stats.dividedTeam && (
-        <Card title={`🔥 Opiniones sobre ${esName(stats.dividedTeam.team)}`}>
-          <div className="flex items-center gap-3">
-            <div className="h-40 flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: "Gana", value: stats.dividedTeam.win },
-                      { name: "Empata", value: stats.dividedTeam.draw },
-                      { name: "Pierde", value: stats.dividedTeam.loss },
-                    ]}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={32}
-                    outerRadius={60}
-                    paddingAngle={2}
-                  >
-                    <Cell fill={PITCH} />
-                    <Cell fill={GOLD} />
-                    <Cell fill="#cbd5e1" />
-                  </Pie>
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex items-center gap-2">
-              <Flag team={stats.dividedTeam.team} />
-              <span className="text-sm font-semibold">
-                {esName(stats.dividedTeam.team)}
-              </span>
-            </div>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }
