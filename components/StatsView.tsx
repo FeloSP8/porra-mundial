@@ -195,7 +195,10 @@ export default function StatsView({ stats }: { stats: Stats }) {
         </ul>
       </Card>
 
-      {/* Originalidad (qué % coincide con el consenso) */}
+      {/* Originalidad (qué % coincide con el consenso).
+          Solo tiene sentido con 3+ jugadores: con 2 no existe una "mayoría"
+          real (en los partidos donde discrepan es 1 vs 1), así que se oculta. */}
+      {stats.submittedCount >= 3 && (
       <Card title="🧠 ¿Quién va con la corriente?">
         <p className="mb-2 text-xs text-slate-500">
           % de partidos en que el jugador coincide con el signo mayoritario.
@@ -235,6 +238,7 @@ export default function StatsView({ stats }: { stats: Stats }) {
           ))}
         </ul>
       </Card>
+      )}
     </div>
   );
 }

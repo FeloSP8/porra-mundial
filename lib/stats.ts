@@ -307,6 +307,11 @@ export function mostCommonScoreline(
 /**
  * Originalidad: para cada jugador, % de partidos en que su signo coincide con
  * el mayoritario. Menor % = más original/contrarian; mayor % = más gregario.
+ *
+ * Solo se cuentan los partidos con MAYORÍA ESTRICTA (un signo con más votos que
+ * los otros dos). Si hay empate de votos (p.ej. 1 vs 1 con 2 jugadores, o
+ * 1/X/2 con 3), no existe "corriente" en ese partido y se ignora, para no
+ * asignar coincidencias por un desempate arbitrario.
  */
 export function originality(
   preds: StatPrediction[],
@@ -315,10 +320,20 @@ export function originality(
 ): Originality[] {
   const idx = indexPredictions(preds);
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
+
+  // Solo partidos con mayoría estricta.
   const matchTop = new Map<number, Outcome>();
   for (const c of matchConsensus(preds, matches)) {
-    matchTop.set(c.match.id, c.topOutcome);
+    const c1 = c.outcomes["1"];
+    const cX = c.outcomes["X"];
+    const c2 = c.outcomes["2"];
+    const top = Math.max(c1, cX, c2);
+    const howManyAtTop = [c1, cX, c2].filter((v) => v === top).length;
+    if (howManyAtTop === 1) {
+      matchTop.set(c.match.id, c.topOutcome);
+    }
   }
+
   const byUser = new Map<string, { aligned: number; n: number }>();
   for (const [matchId, top] of matchTop) {
     const byU = idx.get(matchId);

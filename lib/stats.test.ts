@@ -150,4 +150,25 @@ describe("originality", () => {
     const ana = list.find((x) => x.user === "Ana")!;
     expect(ana.alignmentPct).toBe(100);
   });
+
+  it("ignora los partidos sin mayoría estricta (empate de votos)", () => {
+    // Solo 2 jugadores. Partido 1: coinciden (mayoría 2-0 → cuenta).
+    // Partido 2: discrepan 1 vs 1 (sin mayoría → NO cuenta).
+    const twoUsers: StatUser[] = [
+      { id: "u1", name: "Ana" },
+      { id: "u2", name: "Bea" },
+    ];
+    const preds = [
+      P("u1", 1, 2, 0), // gana local
+      P("u2", 1, 1, 0), // gana local → coinciden
+      P("u1", 2, 2, 0), // gana local
+      P("u2", 2, 0, 1), // gana visitante → 1 vs 1, sin mayoría
+    ];
+    const list = originality(preds, matches, twoUsers);
+    // Solo cuenta el partido 1, donde ambos coinciden → ambos 100%.
+    // Lo importante: NO debe haber diferencia artificial entre los dos.
+    expect(list).toHaveLength(2);
+    expect(list[0].alignmentPct).toBe(list[1].alignmentPct);
+    expect(list[0].alignmentPct).toBe(100);
+  });
 });
