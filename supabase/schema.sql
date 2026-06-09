@@ -114,6 +114,24 @@ create table if not exists public.submissions (
 );
 
 -- ----------------------------------------------------------------------------
+--  PENALIZACIONES POR FASE
+--  Si un jugador NO envía una fase antes del deadline, el cron lo marca como
+--  enviado igualmente y le aplica una penalización: -2 puntos por cada partido
+--  de la fase sin marcador. 1 fila por jugador+fase (idempotente).
+-- ----------------------------------------------------------------------------
+create table if not exists public.phase_penalties (
+  id           bigint generated always as identity primary key,
+  user_id      uuid not null references public.profiles (id) on delete cascade,
+  phase_id     bigint not null references public.phases (id) on delete cascade,
+  missing      int not null default 0,    -- partidos sin pronóstico
+  points       int not null default 0,    -- penalización total (negativa)
+  created_at   timestamptz not null default now(),
+  unique (user_id, phase_id)
+);
+
+create index if not exists idx_penalties_user on public.phase_penalties (user_id);
+
+-- ----------------------------------------------------------------------------
 --  CLASIFICACIÓN REAL DE GRUPOS (la rellena el cron al terminar los grupos)
 -- ----------------------------------------------------------------------------
 create table if not exists public.group_results (
@@ -195,6 +213,7 @@ alter table public.group_standings_predictions  enable row level security;
 alter table public.bracket_predictions          enable row level security;
 alter table public.submissions                  enable row level security;
 alter table public.group_results                enable row level security;
+alter table public.phase_penalties              enable row level security;
 
 -- --- LECTURA: cualquier usuario autenticado ---
 drop policy if exists "read profiles"   on public.profiles;
@@ -220,6 +239,9 @@ create policy "read submissions" on public.submissions for select to authenticat
 
 drop policy if exists "read group_results" on public.group_results;
 create policy "read group_results" on public.group_results for select to authenticated using (true);
+
+drop policy if exists "read penalties" on public.phase_penalties;
+create policy "read penalties" on public.phase_penalties for select to authenticated using (true);
 
 -- --- ESCRITURA de pronósticos: solo lo propio ---
 drop policy if exists "insert own predictions" on public.predictions;

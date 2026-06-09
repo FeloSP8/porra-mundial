@@ -16,15 +16,21 @@ export default async function LeaderboardTable({
 }) {
   const supabase = createClient();
 
-  const [{ data: profiles }, { data: preds }, { data: gsp }, { data: bracket }] =
-    await Promise.all([
-      supabase.from("profiles").select("id, display_name"),
-      supabase.from("predictions").select("user_id, points_awarded"),
-      supabase
-        .from("group_standings_predictions")
-        .select("user_id, points_awarded"),
-      supabase.from("bracket_predictions").select("user_id, points_awarded"),
-    ]);
+  const [
+    { data: profiles },
+    { data: preds },
+    { data: gsp },
+    { data: bracket },
+    { data: penalties },
+  ] = await Promise.all([
+    supabase.from("profiles").select("id, display_name"),
+    supabase.from("predictions").select("user_id, points_awarded"),
+    supabase
+      .from("group_standings_predictions")
+      .select("user_id, points_awarded"),
+    supabase.from("bracket_predictions").select("user_id, points_awarded"),
+    supabase.from("phase_penalties").select("user_id, points"),
+  ]);
 
   type Row = {
     user_id: string;
@@ -32,6 +38,7 @@ export default async function LeaderboardTable({
     matchPoints: number;
     groupPoints: number;
     bracketPoints: number;
+    penaltyPoints: number;
     total: number;
   };
 
@@ -43,6 +50,7 @@ export default async function LeaderboardTable({
       matchPoints: 0,
       groupPoints: 0,
       bracketPoints: 0,
+      penaltyPoints: 0,
       total: 0,
     };
   }
@@ -55,8 +63,12 @@ export default async function LeaderboardTable({
   for (const b of bracket ?? []) {
     if (rows[b.user_id]) rows[b.user_id].bracketPoints += b.points_awarded ?? 0;
   }
+  for (const pen of penalties ?? []) {
+    if (rows[pen.user_id]) rows[pen.user_id].penaltyPoints += pen.points ?? 0;
+  }
   for (const r of Object.values(rows))
-    r.total = r.matchPoints + r.groupPoints + r.bracketPoints;
+    r.total =
+      r.matchPoints + r.groupPoints + r.bracketPoints + r.penaltyPoints;
 
   const ranking = Object.values(rows).sort((a, b) => b.total - a.total);
 
@@ -74,6 +86,7 @@ export default async function LeaderboardTable({
                 <th className={`${cellPad} text-right`}>Partidos</th>
                 <th className={`${cellPad} text-right`}>Grupos</th>
                 <th className={`${cellPad} text-right`}>Cuadro</th>
+                <th className={`${cellPad} text-right`}>Pen.</th>
               </>
             )}
             <th className={`${cellPad} text-right`}>Total</th>
@@ -109,6 +122,13 @@ export default async function LeaderboardTable({
                     <td className={`${cellPad} text-right`}>{r.matchPoints}</td>
                     <td className={`${cellPad} text-right`}>{r.groupPoints}</td>
                     <td className={`${cellPad} text-right`}>{r.bracketPoints}</td>
+                    <td
+                      className={`${cellPad} text-right ${
+                        r.penaltyPoints < 0 ? "text-red-600" : "text-slate-400"
+                      }`}
+                    >
+                      {r.penaltyPoints || 0}
+                    </td>
                   </>
                 )}
                 <td className={`${cellPad} text-right text-lg`}>{r.total}</td>
@@ -118,7 +138,7 @@ export default async function LeaderboardTable({
           {ranking.length === 0 && (
             <tr>
               <td
-                colSpan={compact ? 3 : 6}
+                colSpan={compact ? 3 : 7}
                 className="px-4 py-6 text-center text-slate-400"
               >
                 Aún no hay jugadores.

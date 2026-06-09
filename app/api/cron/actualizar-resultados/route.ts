@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recalcAll, computeGroupResults, recalcBracket } from "@/lib/recalc";
+import {
+  recalcAll,
+  computeGroupResults,
+  recalcBracket,
+  autoCloseExpiredPhases,
+} from "@/lib/recalc";
 import { syncCalendar } from "@/lib/syncCalendar";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +41,10 @@ async function run(request: Request) {
     .update({ is_open: false })
     .lt("deadline", nowIso)
     .eq("is_open", true);
+
+  // 1b) Auto-cierre con penalización: a quien no envió una fase vencida se le
+  //     marca como enviado y se le restan 2 pts por cada partido sin marcador.
+  log.autoClose = await autoCloseExpiredPhases(admin);
 
   // 2) Sincronizar el calendario con football-data: actualiza marcadores Y
   //    CREA los cruces de eliminatoria nuevos a medida que se confirman los

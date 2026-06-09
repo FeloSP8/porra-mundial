@@ -280,3 +280,106 @@ export async function recalcBracket(admin: SupabaseClient): Promise<{
 
   return { bracketRowsUpdated };
 }
+
+/** Puntos que se restan por cada partido no pronosticado al cerrarse la fase. */
+export const PENALTY_PER_MISSING = 2;
+
+/**
+ * Penalización (puntos negativos) de un jugador en una fase: -2 por cada
+ * partido sin marcador. Función pura → testeable.
+ */
+export function computePenalty(
+  totalMatches: number,
+  filledCount: number
+): { missing: number; points: number } {
+  const missing = Math.max(0, totalMatches - filledCount);
+  // `missing === 0` → puntos 0 (evita el -0 de JS).
+  return { missing, points: missing === 0 ? 0 : -missing * PENALTY_PER_MISSING };
+}
+
+/**
+ * Auto-cierre de fases vencidas: a quien NO haya enviado una fase de partidos
+ * cuyo deadline ya pasó, se le marca como enviado igualmente y se le aplica una
+ * penalización de PENALTY_PER_MISSING puntos por cada partido de la fase del
+ * que no haya puesto marcador.
+ *
+ * Idempotente: usa upsert por (user_id, phase_id), así que reejecutarlo no
+ * duplica penalizaciones ni envíos. NO aplica a la fase virtual 'bracket'.
+ */
+export async function autoCloseExpiredPhases(admin: SupabaseClient): Promise<{
+  phasesClosed: number;
+  playersPenalized: number;
+}> {
+  const nowIso = new Date().toISOString();
+
+  // Fases de PARTIDOS con deadline vencido (excluye 'bracket').
+  const { data: phases } = await admin
+    .from("phases")
+    .select("id, key, deadline")
+    .neq("key", "bracket")
+    .not("deadline", "is", null)
+    .lt("deadline", nowIso);
+
+  // Todos los jugadores.
+  const { data: profiles } = await admin.from("profiles").select("id");
+  const allUserIds = (profiles ?? []).map((p) => p.id);
+
+  let phasesClosed = 0;
+  let playersPenalized = 0;
+
+  for (const phase of phases ?? []) {
+    phasesClosed++;
+
+    // Partidos de la fase.
+    const { data: phaseMatches } = await admin
+      .from("matches")
+      .select("id")
+      .eq("phase_id", phase.id);
+    const matchIds = (phaseMatches ?? []).map((m) => m.id);
+    const totalMatches = matchIds.length;
+    if (totalMatches === 0) continue; // sin partidos cargados, nada que penalizar
+
+    // Quién ya tiene submission de esta fase.
+    const { data: subs } = await admin
+      .from("submissions")
+      .select("user_id")
+      .eq("phase_id", phase.id);
+    const submitted = new Set((subs ?? []).map((s) => s.user_id));
+
+    // Predicciones existentes en esta fase, contadas por jugador.
+    const { data: preds } = matchIds.length
+      ? await admin
+          .from("predictions")
+          .select("user_id, match_id")
+          .in("match_id", matchIds)
+      : { data: [] as { user_id: string; match_id: number }[] };
+    const filledByUser = new Map<string, number>();
+    for (const p of preds ?? []) {
+      filledByUser.set(p.user_id, (filledByUser.get(p.user_id) ?? 0) + 1);
+    }
+
+    for (const uid of allUserIds) {
+      if (submitted.has(uid)) continue; // ya envió a tiempo → no se toca
+
+      const filled = filledByUser.get(uid) ?? 0;
+      const { missing, points } = computePenalty(totalMatches, filled);
+
+      // Marcar como enviado (idempotente) y registrar penalización.
+      await admin
+        .from("submissions")
+        .upsert(
+          { user_id: uid, phase_id: phase.id },
+          { onConflict: "user_id,phase_id" }
+        );
+      await admin
+        .from("phase_penalties")
+        .upsert(
+          { user_id: uid, phase_id: phase.id, missing, points },
+          { onConflict: "user_id,phase_id" }
+        );
+      playersPenalized++;
+    }
+  }
+
+  return { phasesClosed, playersPenalized };
+}

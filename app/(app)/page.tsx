@@ -68,6 +68,15 @@ export default async function HomePage() {
               </>
             )}
           </p>
+
+          {/* Aviso de penalización por no enviar a tiempo */}
+          {!submittedPhaseIds.has(openPhase.id) && (
+            <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              ⚠️ Si no envías antes del cierre, se marcará como enviado igualmente
+              y se te restarán <b>2 puntos por cada partido sin pronosticar</b>.
+            </p>
+          )}
+
           <Link
             href={`/predicciones/${openPhase.key}`}
             className="mt-3 block sm:inline-block w-full sm:w-auto text-center rounded-lg bg-pitch px-4 py-2.5 font-semibold text-white hover:opacity-90 transition"

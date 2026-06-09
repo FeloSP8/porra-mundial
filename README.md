@@ -67,6 +67,12 @@ Definida en [`lib/scoring.ts`](lib/scoring.ts). Valores por defecto:
 Para cambiarlos: edita `SCORING` en `lib/scoring.ts`, vuelve a desplegar y pulsa
 **“Recalcular puntos ahora”** en el panel admin.
 
+> **Penalización por no enviar a tiempo:** si un jugador no envía una fase antes
+> del cierre, la rutina diaria lo marca como enviado igualmente y le resta
+> **2 puntos por cada partido sin pronosticar** (`PENALTY_PER_MISSING` en
+> `lib/recalc.ts`). Se registra en la tabla `phase_penalties` y se descuenta del
+> total en la clasificación.
+
 > El orden de los grupos **no se elige a mano**: se deduce de los marcadores que
 > pronostica cada jugador, aplicando los desempates oficiales de la FIFA
 > (enfrentamiento directo → diferencia de goles directa → goles directos →
