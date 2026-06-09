@@ -203,9 +203,11 @@ export default function PredictionForm({
         </div>
       )}
 
-      {/* SELECTOR DE GRUPOS (solo para fase de grupos) */}
+      {/* SELECTOR DE GRUPOS (solo para fase de grupos)
+          Móvil: scroll horizontal con el dedo. Escritorio (sm+): los chips
+          hacen wrap en varias líneas (con ratón no hay scroll lateral cómodo). */}
       {isGroupPhase && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none sm:flex-wrap sm:overflow-x-visible sm:mx-0 sm:px-0">
           {groupKeys.map((gk) => {
             const isActive = activeGroup === gk;
             const groupMatches = matchesByGroup[gk] ?? [];
