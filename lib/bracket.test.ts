@@ -126,4 +126,38 @@ describe("buildR32FromGroups", () => {
     // Los de A..H sí.
     for (const g of "ABCDEFGH".split("")) expect(thirds.has(`${g}3`)).toBe(true);
   });
+
+  it("ningún tercero se enfrenta al primero de su propio grupo", () => {
+    // Caso difícil: los 8 mejores terceros provienen justo de los 8 grupos
+    // cuyos PRIMEROS reciben tercero (E,I,A,L,D,G,B,K). El backtracking debe
+    // colocar cada tercero contra un primero de OTRO grupo.
+    const groups = fakeGroups();
+    const winnersWithThird = "EIALDGBK".split("");
+    const stats: Record<string, { points: number; gd: number; gf: number }> = {};
+    for (const g of winnersWithThird)
+      stats[`${g}3`] = { points: 9, gd: 9, gf: 9 };
+    for (const g of "ABCDEFGHIJKL".split(""))
+      if (!winnersWithThird.includes(g))
+        stats[`${g}3`] = { points: 0, gd: 0, gf: 0 };
+
+    const r32 = buildR32FromGroups(groups, stats);
+
+    // Para cada cruce con tercero, el tercero NO debe ser del grupo del primero.
+    for (const m of R32_MATCHES) {
+      let winnerGroup: string | null = null;
+      let third: string | null = null;
+      if (m.home.type === "winner" && m.away.type === "third") {
+        winnerGroup = m.home.group;
+        third = r32[m.id].away;
+      } else if (m.away.type === "winner" && m.home.type === "third") {
+        winnerGroup = m.away.group;
+        third = r32[m.id].home;
+      }
+      if (winnerGroup && third) {
+        // En fakeGroups, el tercero "X3" pertenece al grupo X.
+        const thirdGroup = third[0];
+        expect(thirdGroup).not.toBe(winnerGroup);
+      }
+    }
+  });
 });

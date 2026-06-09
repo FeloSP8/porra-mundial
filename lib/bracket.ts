@@ -118,60 +118,142 @@ export function slotId(round: BracketRound, index: number): string {
   return `${round}-${index + 1}`;
 }
 
+export type ThirdStat = { points: number; gd: number; gf: number };
+
+/**
+ * Devuelve el grupo del que proviene el equipo en una fuente winner/runnerup,
+ * o null para third.
+ */
+function sourceGroup(s: Source): string | null {
+  return s.type === "third" ? null : s.group;
+}
+
 /**
  * Construye los emparejamientos iniciales de R32 a partir del orden de grupos
  * pronosticado por el jugador.
  *
+ * Los 8 mejores terceros se eligen POR MÉRITO (puntos → dif. de goles → goles a
+ * favor), igual que la regla oficial de la FIFA. Cada tercero se asigna a un
+ * primero de grupo de modo que NUNCA se enfrente al primero de su propio grupo
+ * (regla oficial del cuadro). No replicamos la tabla exacta de 495 escenarios
+ * de FIFA (no es pública de forma usable), pero el reparto es coherente y justo.
+ *
  * @param rankByGroup mapa "A".."L" -> array de equipos ordenados [1º,2º,3º,4º]
- * @param thirdsStats opcional: para elegir los 8 mejores terceros, un mapa
- *        equipo -> { points, gd, gf }. Si falta, se toman los terceros en
- *        orden alfabético de grupo (los 8 primeros).
- * @returns para cada r32-N, los dos equipos { home, away } (o null si falta info)
+ * @param thirdsStats opcional: estadísticas de cada tercero para elegir los 8
+ *        mejores. Si falta, se ordenan por grupo (peor: orden alfabético).
+ * @param teamGroup opcional: mapa equipo -> grupo (para evitar choque con su
+ *        propio grupo). Si falta, se deduce de rankByGroup.
  */
 export function buildR32FromGroups(
   rankByGroup: Record<string, string[]>,
-  thirdsStats?: Record<string, { points: number; gd: number; gf: number }>
+  thirdsStats?: Record<string, ThirdStat>,
+  teamGroup?: Record<string, string>
 ): Record<string, { home: string | null; away: string | null }> {
-  // Equipo concreto para winner/runnerup.
   const teamFor = (s: Source): string | null => {
     if (s.type === "winner") return rankByGroup[s.group]?.[0] ?? null;
     if (s.type === "runnerup") return rankByGroup[s.group]?.[1] ?? null;
-    return null; // third → se asigna aparte
+    return null;
   };
 
-  // Terceros candidatos (uno por grupo, si existe).
+  // Mapa equipo -> grupo (deducido si no se pasa).
+  const groupOf: Record<string, string> = { ...(teamGroup ?? {}) };
+  if (!teamGroup) {
+    for (const g of GROUP_LABELS) {
+      for (const t of rankByGroup[g] ?? []) if (t) groupOf[t] = g;
+    }
+  }
+
+  // Terceros candidatos (uno por grupo, si existe) con su grupo.
   const thirds: string[] = [];
   for (const g of GROUP_LABELS) {
     const t = rankByGroup[g]?.[2];
     if (t) thirds.push(t);
   }
 
-  // Elegir los 8 mejores terceros.
-  let best8: string[];
-  if (thirdsStats) {
-    best8 = [...thirds]
-      .sort((a, b) => {
-        const A = thirdsStats[a] ?? { points: 0, gd: 0, gf: 0 };
-        const B = thirdsStats[b] ?? { points: 0, gd: 0, gf: 0 };
-        if (B.points !== A.points) return B.points - A.points;
-        if (B.gd !== A.gd) return B.gd - A.gd;
-        if (B.gf !== A.gf) return B.gf - A.gf;
-        return a.localeCompare(b);
-      })
-      .slice(0, 8);
-  } else {
-    best8 = thirds.slice(0, 8);
+  // Elegir los 8 MEJORES terceros por mérito.
+  const best8 = [...thirds]
+    .sort((a, b) => {
+      const A = thirdsStats?.[a] ?? { points: 0, gd: 0, gf: 0 };
+      const B = thirdsStats?.[b] ?? { points: 0, gd: 0, gf: 0 };
+      if (B.points !== A.points) return B.points - A.points;
+      if (B.gd !== A.gd) return B.gd - A.gd;
+      if (B.gf !== A.gf) return B.gf - A.gf;
+      return a.localeCompare(b);
+    })
+    .slice(0, 8);
+
+  // Slots de tercero, en orden, con el grupo del PRIMERO contra el que jugarían.
+  const thirdSlots: { matchId: string; side: "home" | "away"; winnerGroup: string }[] =
+    [];
+  for (const m of R32_MATCHES) {
+    if (m.home.type === "third") {
+      thirdSlots.push({
+        matchId: m.id,
+        side: "home",
+        winnerGroup: sourceGroup(m.away)!, // el otro lado siempre es el winner
+      });
+    }
+    if (m.away.type === "third") {
+      thirdSlots.push({
+        matchId: m.id,
+        side: "away",
+        winnerGroup: sourceGroup(m.home)!,
+      });
+    }
   }
 
-  // Asignar los 8 mejores terceros a los slots "third" en orden de aparición.
+  // Asignar cada tercero a un slot de modo que no choque con su propio grupo.
+  // Backtracking: con 8 terceros y 8 slots casi siempre hay solución directa.
+  const assignment = assignThirds(best8, thirdSlots, groupOf);
+
   const result: Record<string, { home: string | null; away: string | null }> = {};
-  let thirdCursor = 0;
   for (const m of R32_MATCHES) {
-    const home =
-      m.home.type === "third" ? best8[thirdCursor++] ?? null : teamFor(m.home);
-    const away =
-      m.away.type === "third" ? best8[thirdCursor++] ?? null : teamFor(m.away);
-    result[m.id] = { home, away };
+    result[m.id] = {
+      home: m.home.type === "third" ? null : teamFor(m.home),
+      away: m.away.type === "third" ? null : teamFor(m.away),
+    };
+  }
+  for (const slot of thirdSlots) {
+    const team = assignment[slot.matchId + "-" + slot.side] ?? null;
+    result[slot.matchId][slot.side] = team;
+  }
+  return result;
+}
+
+/**
+ * Asigna terceros a slots evitando que un tercero juegue contra el primero de
+ * su propio grupo. Devuelve mapa "matchId-side" -> equipo. Backtracking simple.
+ */
+function assignThirds(
+  thirds: string[],
+  slots: { matchId: string; side: "home" | "away"; winnerGroup: string }[],
+  groupOf: Record<string, string>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  const used = new Set<number>();
+
+  function ok(thirdIdx: number, slotIdx: number): boolean {
+    return groupOf[thirds[thirdIdx]] !== slots[slotIdx].winnerGroup;
+  }
+
+  function solve(slotIdx: number): boolean {
+    if (slotIdx >= slots.length) return true;
+    for (let t = 0; t < thirds.length; t++) {
+      if (used.has(t) || !ok(t, slotIdx)) continue;
+      used.add(t);
+      result[slots[slotIdx].matchId + "-" + slots[slotIdx].side] = thirds[t];
+      if (solve(slotIdx + 1)) return true;
+      used.delete(t);
+      delete result[slots[slotIdx].matchId + "-" + slots[slotIdx].side];
+    }
+    return false;
+  }
+
+  if (!solve(0)) {
+    // Sin solución que respete la restricción: asignación directa por orden.
+    slots.forEach((s, i) => {
+      if (thirds[i]) result[s.matchId + "-" + s.side] = thirds[i];
+    });
   }
   return result;
 }

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { phaseAcceptsSubmissions, type Phase } from "@/lib/types";
-import { buildR32FromGroups } from "@/lib/bracket";
+import { buildR32FromGroups, type ThirdStat } from "@/lib/bracket";
+import { groupTable, type TableMatch } from "@/lib/groupTable";
 import BracketView from "@/components/BracketView";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +85,15 @@ export default async function CuadroPage() {
     );
   }
 
-  const initialR32 = buildR32FromGroups(rankByGroup);
+  // Estadísticas de cada tercero (puntos/dif.goles/goles) recomputando las
+  // tablas de grupo desde los marcadores que pronosticó el jugador. Sirve para
+  // elegir los 8 MEJORES terceros por mérito (regla oficial), no por alfabeto.
+  const { thirdsStats, teamGroup } = await computeThirdsStats(
+    supabase,
+    profile.id
+  );
+
+  const initialR32 = buildR32FromGroups(rankByGroup, thirdsStats, teamGroup);
 
   return (
     <BracketView
@@ -94,4 +103,80 @@ export default async function CuadroPage() {
       alreadySubmitted={alreadySubmitted}
     />
   );
+}
+
+/**
+ * Recomputa las tablas de grupo desde los marcadores pronosticados por el
+ * jugador y devuelve, para cada equipo que queda 3º, sus estadísticas, además
+ * de un mapa equipo->grupo.
+ */
+async function computeThirdsStats(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<{
+  thirdsStats: Record<string, ThirdStat>;
+  teamGroup: Record<string, string>;
+}> {
+  // Partidos de la fase de grupos (con grupo y equipos).
+  const { data: groupsPhase } = await supabase
+    .from("phases")
+    .select("id")
+    .eq("key", "groups")
+    .single();
+
+  const { data: matchRows } = groupsPhase
+    ? await supabase
+        .from("matches")
+        .select("id, group_label, home_team, away_team")
+        .eq("phase_id", groupsPhase.id)
+        .not("group_label", "is", null)
+    : { data: [] as any[] };
+
+  const matchIds = (matchRows ?? []).map((m: any) => m.id);
+  const { data: preds } = matchIds.length
+    ? await supabase
+        .from("predictions")
+        .select("match_id, pred_home, pred_away")
+        .eq("user_id", userId)
+        .in("match_id", matchIds)
+    : { data: [] as any[] };
+  const predByMatch = new Map(
+    (preds ?? []).map((p: any) => [p.match_id, p])
+  );
+
+  // Construir, por grupo, los equipos y los TableMatch con los marcadores.
+  const byGroup: Record<
+    string,
+    { teams: Set<string>; matches: TableMatch[] }
+  > = {};
+  const teamGroup: Record<string, string> = {};
+  for (const m of matchRows ?? []) {
+    const g = (byGroup[m.group_label] ??= { teams: new Set(), matches: [] });
+    g.teams.add(m.home_team);
+    g.teams.add(m.away_team);
+    teamGroup[m.home_team] = m.group_label;
+    teamGroup[m.away_team] = m.group_label;
+    const p = predByMatch.get(m.id);
+    g.matches.push({
+      home_team: m.home_team,
+      away_team: m.away_team,
+      home_score: p ? p.pred_home : null,
+      away_score: p ? p.pred_away : null,
+    });
+  }
+
+  const thirdsStats: Record<string, ThirdStat> = {};
+  for (const [, g] of Object.entries(byGroup)) {
+    const table = groupTable([...g.teams], g.matches);
+    const third = table[2]; // 3ª posición
+    if (third) {
+      thirdsStats[third.team] = {
+        points: third.points,
+        gd: third.gd,
+        gf: third.gf,
+      };
+    }
+  }
+
+  return { thirdsStats, teamGroup };
 }
