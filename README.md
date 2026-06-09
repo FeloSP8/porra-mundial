@@ -40,6 +40,11 @@ semifinales → final**.
   construye a partir de tu propio pronóstico de grupos. Suma **1 punto extra por
   cada cruce acertado** (+1 por el campeón), aparte de lo demás. Ver
   [`lib/bracket.ts`](lib/bracket.ts).
+- **Estadísticas por fase** (`/estadisticas`): curiosidades de los pronósticos
+  (mayores goleadas, partidos de mayor/menor consenso, equipo favorito/víctima,
+  el más unánime/polémico, media de goles, empatólogo, originalidad…) con
+  gráficos (recharts). Solo las ve quien ha enviado esa fase, y se calculan
+  sobre los jugadores que la han enviado (mínimo 2).
 - **Clasificación general** (Partidos + Grupos + Cuadro) + **estado de envíos**
   de cada jugador en la home.
 - **Panel admin** para abrir/cerrar fases, fijar deadlines, meter resultados a

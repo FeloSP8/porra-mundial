@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/cuadro", label: "Cuadro" },
   { href: "/jornadas", label: "Jornadas" },
   { href: "/clasificacion", label: "Clasificación" },
+  { href: "/estadisticas", label: "Estadísticas" },
   { href: "/reglas", label: "Reglas" },
 ];
 
