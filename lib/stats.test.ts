@@ -82,9 +82,10 @@ describe("consenso por equipo", () => {
       P("u3", 2, 0, 2), // France pierde
     ];
     const unanimous = mostUnanimousTeam(preds, matches)!;
-    // Spain: 3 victorias de 3 → agreement 1
+    // Spain: 3 victorias de 3 → agreement 1, y en lo que coinciden es "gana"
     expect(unanimous.team).toBe("Spain");
     expect(unanimous.agreement).toBe(1);
+    expect(unanimous.topResult).toBe("win");
 
     const divided = mostDividedTeam(preds, matches)!;
     // France: 1 win, 1 draw, 1 loss → agreement 1/3

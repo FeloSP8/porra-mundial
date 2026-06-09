@@ -44,6 +44,8 @@ export type MatchConsensus = {
   topOutcome: Outcome;
 };
 
+export type TeamResult = "win" | "draw" | "loss";
+
 export type TeamConsensus = {
   team: string;
   /** nº de veces que la peña lo hace ganar / empatar / perder (sumando sus partidos) */
@@ -52,6 +54,8 @@ export type TeamConsensus = {
   loss: number;
   /** 0..1: fracción del resultado mayoritario para ese equipo */
   agreement: number;
+  /** el resultado mayoritario (en qué están de acuerdo): gana, empata o pierde */
+  topResult: TeamResult;
   /** nº total de "opiniones" (jugadores × partidos del equipo) */
   total: number;
 };
@@ -200,12 +204,16 @@ export function teamConsensus(
   for (const [team, s] of agg) {
     if (s.total === 0) continue;
     const top = Math.max(s.win, s.draw, s.loss);
+    // En qué está de acuerdo la mayoría: gana / empata / pierde.
+    const topResult: TeamResult =
+      s.win === top ? "win" : s.loss === top ? "loss" : "draw";
     out.push({
       team,
       win: s.win,
       draw: s.draw,
       loss: s.loss,
       agreement: top / s.total,
+      topResult,
       total: s.total,
     });
   }

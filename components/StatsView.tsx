@@ -21,6 +21,7 @@ import type {
   PlayerGoals,
   Originality,
   ScoreLine,
+  TeamResult,
 } from "@/lib/stats";
 
 type Stats = {
@@ -40,6 +41,11 @@ type Stats = {
 
 const PITCH = "#0b6e4f";
 const GOLD = "#f4c430";
+
+/** Verbo del resultado mayoritario de un equipo (para textos). */
+function resultVerb(r: TeamResult): string {
+  return r === "win" ? "ganador" : r === "loss" ? "eliminado/perdedor" : "empatando";
+}
 
 export default function StatsView({ stats }: { stats: Stats }) {
   return (
@@ -72,7 +78,9 @@ export default function StatsView({ stats }: { stats: Stats }) {
             emoji="🤝"
             label="Más unanimidad"
             team={stats.unanimousTeam.team}
-            sub={`${Math.round(stats.unanimousTeam.agreement * 100)}% de acuerdo`}
+            sub={`${Math.round(
+              stats.unanimousTeam.agreement * 100
+            )}% lo da ${resultVerb(stats.unanimousTeam.topResult)}`}
           />
         )}
         {stats.dividedTeam && (
@@ -80,7 +88,7 @@ export default function StatsView({ stats }: { stats: Stats }) {
             emoji="🔥"
             label="El más polémico"
             team={stats.dividedTeam.team}
-            sub={`${Math.round(stats.dividedTeam.agreement * 100)}% de acuerdo`}
+            sub={`sin acuerdo: ${stats.dividedTeam.win}G · ${stats.dividedTeam.draw}E · ${stats.dividedTeam.loss}P`}
           />
         )}
       </div>
@@ -127,10 +135,10 @@ export default function StatsView({ stats }: { stats: Stats }) {
 
       {/* Partidos más unánimes / divididos */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Card title="🤝 Más unanimidad">
+        <Card title="🤝 Partidos con más acuerdo">
           <ConsensusList items={stats.mostAgreed} />
         </Card>
-        <Card title="⚔️ Más divididos">
+        <Card title="⚔️ Partidos con más dudas">
           <ConsensusList items={stats.mostDivided} />
         </Card>
       </div>
@@ -313,29 +321,35 @@ function Highlight({
   );
 }
 
+/** Texto claro del resultado mayoritario de un partido. */
+function consensusLabel(c: MatchConsensus): string {
+  if (c.topOutcome === "X") return "empate";
+  const winner =
+    c.topOutcome === "1" ? c.match.home_team : c.match.away_team;
+  return `gana ${esName(winner)}`;
+}
+
 function ConsensusList({ items }: { items: MatchConsensus[] }) {
-  const sign = (o: string) => (o === "1" ? "1" : o === "2" ? "2" : "X");
   return (
-    <ul className="space-y-2 text-sm">
-      {items.map((c) => (
-        <li key={c.match.id} className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1 min-w-0">
-            <Flag team={c.match.home_team} />
-            <span className="truncate">{esName(c.match.home_team)}</span>
-            <span className="text-slate-300">·</span>
-            <span className="truncate">{esName(c.match.away_team)}</span>
-            <Flag team={c.match.away_team} />
-          </span>
-          <span className="flex flex-shrink-0 items-center gap-1 text-xs">
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold">
-              {sign(c.topOutcome)}
-            </span>
-            <span className="tabular-nums text-slate-500">
-              {Math.round(c.agreement * 100)}%
-            </span>
-          </span>
-        </li>
-      ))}
+    <ul className="space-y-2.5 text-sm">
+      {items.map((c) => {
+        const pct = Math.round(c.agreement * 100);
+        return (
+          <li key={c.match.id}>
+            <div className="flex items-center gap-1 min-w-0">
+              <Flag team={c.match.home_team} />
+              <span className="truncate">{esName(c.match.home_team)}</span>
+              <span className="text-slate-300">·</span>
+              <span className="truncate">{esName(c.match.away_team)}</span>
+              <Flag team={c.match.away_team} />
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              <b className="text-slate-700">{pct}%</b> coincide en que{" "}
+              <b className="text-slate-700">{consensusLabel(c)}</b>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
