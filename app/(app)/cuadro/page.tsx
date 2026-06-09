@@ -163,6 +163,8 @@ export default async function CuadroPage({
         </p>
       )}
       <BracketView
+        key={selectedId /* remonta el componente al cambiar de jugador, así
+                            no arrastra el estado picks del jugador anterior */}
         initialR32={initialR32}
         initialPicks={picks}
         readOnly={readOnly}
