@@ -171,14 +171,16 @@ Entra como admin → **Admin** → introduce un resultado a mano → comprueba q
 3. En **Settings → Environment Variables**, añade las 5 variables del
    `.env.local` (para los entornos Production y Preview).
 4. **Deploy.**
-5. El cron de [`vercel.json`](vercel.json) (`0 7 * * *`, una vez al día — máximo
+5. El cron de [`vercel.json`](vercel.json) (`0 6 * * *`, una vez al día — máximo
    del plan Hobby) aparecerá en **Settings → Cron Jobs**. Vercel envía
    automáticamente el header `Authorization: Bearer <CRON_SECRET>`, así que el
    endpoint queda protegido.
 
-> ⏰ La hora del cron (07:00 UTC) y la zona horaria se ajustan en `vercel.json`.
+> ⏰ El cron corre a las **06:00 UTC = 08:00 hora de España peninsular** (CEST,
+> verano). Se ajusta en `vercel.json` (Vercel programa los crons **en UTC**).
 > El plan gratuito solo permite **una ejecución diaria**, que es justo lo que
-> necesita esta porra (“cada mañana”).
+> necesita esta porra (“cada mañana”): a las 8:00 ya han terminado todos los
+> partidos de la madrugada anterior.
 
 ---
 
