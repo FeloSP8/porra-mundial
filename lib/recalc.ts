@@ -10,6 +10,7 @@ import {
   bracketPointsByRound,
   type RoundKey,
 } from "./bracketScoring";
+import { syncCalendar } from "./syncCalendar";
 
 /**
  * Recalcula points_awarded de TODAS las predicciones de partidos terminados,
@@ -382,4 +383,46 @@ export async function autoCloseExpiredPhases(admin: SupabaseClient): Promise<{
   }
 
   return { phasesClosed, playersPenalized };
+}
+
+/**
+ * Proceso COMPLETO de actualización (el mismo que ejecuta la rutina diaria):
+ *  1. Cierra fases vencidas + penaliza a quien no envió.
+ *  2. Sincroniza el calendario con football-data (marcadores + cruces nuevos).
+ *  3. Calcula la clasificación real de los grupos completados.
+ *  4. Recalcula puntos (partidos/grupos + cuadro).
+ *
+ * Lo usan el cron (`/api/cron/...`) y el botón del panel admin
+ * (`/api/admin/actualizar`), para tener una única fuente de verdad.
+ */
+export async function runFullUpdate(admin: SupabaseClient) {
+  const log: Record<string, unknown> = {};
+
+  // 1) Cerrar fases cuyo deadline ya pasó + penalizaciones.
+  const nowIso = new Date().toISOString();
+  await admin
+    .from("phases")
+    .update({ is_open: false })
+    .lt("deadline", nowIso)
+    .eq("is_open", true);
+  log.autoClose = await autoCloseExpiredPhases(admin);
+
+  // 2) Sincronizar con football-data (no aborta si falla la API).
+  const sync = await syncCalendar(admin);
+  if (sync.error) log.footballDataError = sync.error;
+  else
+    log.calendar = {
+      created: sync.created,
+      updated: sync.updated,
+      skipped: sync.skipped,
+    };
+
+  // 3) Clasificación de grupos completados.
+  log.groups = await computeGroupResults(admin);
+
+  // 4) Recalcular puntos.
+  log.recalc = await recalcAll(admin);
+  log.bracket = await recalcBracket(admin);
+
+  return log;
 }

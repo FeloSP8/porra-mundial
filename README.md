@@ -198,6 +198,12 @@ Si football-data falla o se queda sin cuota, la rutina **no rompe**: recalcula
 con lo que haya en la BD, y siempre puedes meter resultados a mano desde el panel
 admin.
 
+> 🔄 **Forzar la actualización al instante:** en el panel **Admin → "Actualizar
+> resultados ahora"** se ejecuta el mismo proceso completo que el cron (trae
+> resultados de football-data + recalcula), sin esperar a las 8:00. Útil cuando
+> ya se han jugado partidos durante el día. La lógica vive en `runFullUpdate`
+> ([`lib/recalc.ts`](lib/recalc.ts)), compartida por el cron y el botón.
+
 Probar el cron a mano:
 
 ```bash

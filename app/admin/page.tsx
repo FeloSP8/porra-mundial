@@ -5,6 +5,7 @@ import type { Phase, Match } from "@/lib/types";
 import PhaseControls from "@/components/admin/PhaseControls";
 import ResultEditor from "@/components/admin/ResultEditor";
 import RecalcButton from "@/components/admin/RecalcButton";
+import UpdateButton from "@/components/admin/UpdateButton";
 
 export const dynamic = "force-dynamic";
 
@@ -52,12 +53,23 @@ export default async function AdminPage() {
           </div>
         </section>
 
-        {/* RECÁLCULO */}
+        {/* ACTUALIZAR AHORA (proceso completo, como el cron) */}
+        <section className="space-y-3">
+          <h2 className="font-semibold text-pitch">Actualizar resultados</h2>
+          <p className="text-sm text-slate-600">
+            Trae los resultados de football-data y recalcula la clasificación
+            <b> al instante</b>, sin esperar a la rutina de las 8:00. Úsalo
+            cuando ya se hayan jugado partidos.
+          </p>
+          <UpdateButton />
+        </section>
+
+        {/* RECÁLCULO (solo recalcula, sin llamar a football-data) */}
         <section className="space-y-3">
           <h2 className="font-semibold text-pitch">Recálculo</h2>
           <p className="text-sm text-slate-600">
-            Fuerza un recálculo de puntos (tras editar resultados o cambiar la
-            puntuación). La rutina diaria ya lo hace automáticamente.
+            Solo recalcula los puntos con lo que hay en la BD (tras editar
+            resultados a mano o cambiar la puntuación). No llama a football-data.
           </p>
           <RecalcButton />
         </section>
