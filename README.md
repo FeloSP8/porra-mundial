@@ -48,8 +48,10 @@ semifinales → final**.
   el más unánime/polémico, media de goles, empatólogo, originalidad…) con
   gráficos (recharts). Solo las ve quien ha enviado esa fase, y se calculan
   sobre los jugadores que la han enviado (mínimo 2).
-- **Clasificación general** (Partidos + Grupos + Cuadro) + **estado de envíos**
-  de cada jugador en la home.
+- **Clasificación general** (Partidos + Grupos + Cuadro − penalizaciones) +
+  **estado de envíos** de cada jugador en la home. Desempate: ante igualdad de
+  puntos, va por delante quien más **marcadores exactos** haya acertado y, si
+  persiste, por orden alfabético.
 - **Panel admin** para abrir/cerrar fases, fijar deadlines, meter resultados a
   mano y recalcular.
 - **Generación automática de cruces:** entre fases, el cron crea los partidos de

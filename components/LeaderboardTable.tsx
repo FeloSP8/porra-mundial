@@ -1,8 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { SCORING } from "@/lib/scoring";
 
 /**
  * Tabla de clasificación general (Server Component). Suma de puntos por
- * partidos + por orden de grupos.
+ * partidos + orden de grupos + cuadro − penalizaciones.
+ *
+ * Orden: 1) puntos totales (desc); 2) más marcadores EXACTOS acertados (desc);
+ * 3) nombre alfabético. Así, ante un empate a puntos, desempata quien más
+ * resultados exactos clavó, y si aún empatan, el orden es estable (alfabético).
  *
  * - currentUserId: para destacar la fila del usuario actual.
  * - compact:       en la home reduce padding y oculta columnas Partidos/Grupos.
@@ -39,6 +44,7 @@ export default async function LeaderboardTable({
     groupPoints: number;
     bracketPoints: number;
     penaltyPoints: number;
+    exactCount: number; // nº de marcadores exactos acertados (para desempate)
     total: number;
   };
 
@@ -51,11 +57,18 @@ export default async function LeaderboardTable({
       groupPoints: 0,
       bracketPoints: 0,
       penaltyPoints: 0,
+      exactCount: 0,
       total: 0,
     };
   }
   for (const p of preds ?? []) {
-    if (rows[p.user_id]) rows[p.user_id].matchPoints += p.points_awarded ?? 0;
+    if (rows[p.user_id]) {
+      rows[p.user_id].matchPoints += p.points_awarded ?? 0;
+      // Un marcador exacto vale SCORING.EXACT_SCORE → cuéntalo para el desempate.
+      if ((p.points_awarded ?? 0) === SCORING.EXACT_SCORE) {
+        rows[p.user_id].exactCount++;
+      }
+    }
   }
   for (const g of gsp ?? []) {
     if (rows[g.user_id]) rows[g.user_id].groupPoints += g.points_awarded ?? 0;
@@ -70,7 +83,12 @@ export default async function LeaderboardTable({
     r.total =
       r.matchPoints + r.groupPoints + r.bracketPoints + r.penaltyPoints;
 
-  const ranking = Object.values(rows).sort((a, b) => b.total - a.total);
+  const ranking = Object.values(rows).sort(
+    (a, b) =>
+      b.total - a.total || // 1) más puntos
+      b.exactCount - a.exactCount || // 2) más marcadores exactos
+      a.display_name.localeCompare(b.display_name) // 3) alfabético (estable)
+  );
 
   const cellPad = compact ? "px-2.5 py-2" : "px-2.5 sm:px-4 py-2.5";
 

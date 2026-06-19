@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { bracketPoints, bracketTotal } from "./bracketScoring";
+import {
+  bracketPoints,
+  bracketTotal,
+  bracketPointsByRound,
+  type RoundKey,
+} from "./bracketScoring";
 
 describe("bracketPoints", () => {
   it("da 1 punto por cada ganador de cruce acertado", () => {
@@ -62,5 +67,61 @@ describe("bracketTotal", () => {
       champion: "A", // 1
     };
     expect(bracketTotal(predicted, real)).toBe(5);
+  });
+});
+
+describe("bracketPointsByRound (la que usa el recálculo real)", () => {
+  // Helper para construir el mapa ronda -> Set<equipo>.
+  function rounds(
+    obj: Partial<Record<RoundKey, string[]>>
+  ): Record<RoundKey, Set<string>> {
+    return {
+      r16: new Set(obj.r16 ?? []),
+      qf: new Set(obj.qf ?? []),
+      sf: new Set(obj.sf ?? []),
+      final: new Set(obj.final ?? []),
+      champion: new Set(obj.champion ?? []),
+    };
+  }
+
+  it("puntúa por RONDA ALCANZADA, sin importar el lado del cuadro", () => {
+    // El jugador predijo que España llega a la final. España llega de verdad,
+    // aunque por el otro lado del cuadro (eso es irrelevante: solo cuenta que
+    // está entre los equipos que alcanzaron la final).
+    const predicted = rounds({ final: ["España"] });
+    const real = rounds({ final: ["España", "Francia"] });
+    const { total, perRound } = bracketPointsByRound(predicted, real);
+    expect(perRound.final).toBe(1);
+    expect(total).toBe(1);
+  });
+
+  it("cuenta cada ronda por separado y suma", () => {
+    const predicted = rounds({
+      r16: ["España", "Brasil"],
+      qf: ["España"],
+      sf: ["España"],
+      final: ["España"],
+      champion: ["España"],
+    });
+    const real = rounds({
+      r16: ["España", "Italia"], // España sí (1), Brasil no
+      qf: ["España"], // 1
+      sf: ["Francia"], // España no (0)
+      final: ["España"], // 1
+      champion: ["España"], // 1
+    });
+    const { total, perRound } = bracketPointsByRound(predicted, real);
+    expect(perRound.r16).toBe(1);
+    expect(perRound.qf).toBe(1);
+    expect(perRound.sf).toBe(0);
+    expect(perRound.final).toBe(1);
+    expect(perRound.champion).toBe(1);
+    expect(total).toBe(4);
+  });
+
+  it("no puntúa rondas aún no jugadas (sets reales vacíos)", () => {
+    const predicted = rounds({ final: ["España"], champion: ["España"] });
+    const real = rounds({}); // nada jugado todavía
+    expect(bracketPointsByRound(predicted, real).total).toBe(0);
   });
 });
