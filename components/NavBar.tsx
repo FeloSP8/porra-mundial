@@ -36,7 +36,7 @@ export default function NavBar({
     <header className="border-b bg-pitch text-white">
       <nav className="mx-auto flex max-w-4xl flex-col gap-y-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-y-0">
         <div className="flex items-center justify-between w-full sm:w-auto">
-          <span className="font-bold whitespace-nowrap">⚽ Porra 2026</span>
+          <span className="font-bold whitespace-nowrap">⚽ Porra Mundial 2026</span>
           <div className="flex items-center gap-2 text-sm sm:hidden">
             <span className="opacity-75 text-xs max-w-[120px] truncate">{displayName}</span>
             <button
