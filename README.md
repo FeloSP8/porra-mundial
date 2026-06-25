@@ -43,6 +43,10 @@ semifinales → final**.
   torneo** ([`components/BracketTree.tsx`](components/BracketTree.tsx)) y desde
   `/cuadro` puedes **ver el de otros jugadores** (selector), respetando la
   privacidad del bracket.
+- **Grupos** (`/grupos`): clasificación real "al día" de cada grupo (calculada
+  con los resultados ya guardados en la BD, sin gastar cuota de football-data),
+  el orden que predijo cada jugador y los **puntos de grupo provisionales** que
+  sumaría si los grupos quedaran como están ahora. Solo lo ve quien envió grupos.
 - **Estadísticas por fase** (`/estadisticas`): curiosidades de los pronósticos
   (mayores goleadas, partidos de mayor/menor consenso, equipo favorito/víctima,
   el más unánime/polémico, media de goles, empatólogo, originalidad…) con
