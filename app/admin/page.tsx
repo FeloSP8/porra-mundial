@@ -29,6 +29,14 @@ export default async function AdminPage() {
   const byPhase: Record<number, Match[]> = {};
   for (const m of matchList) (byPhase[m.phase_id] ??= []).push(m);
 
+  // Primer kickoff de cada fase (para pre-rellenar el deadline al abrir).
+  const firstKickoffByPhase: Record<number, string> = {};
+  for (const m of matchList) {
+    if (!m.kickoff) continue;
+    const prev = firstKickoffByPhase[m.phase_id];
+    if (!prev || m.kickoff < prev) firstKickoffByPhase[m.phase_id] = m.kickoff;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-4xl space-y-8 px-4 py-6">
@@ -48,7 +56,11 @@ export default async function AdminPage() {
           </p>
           <div className="space-y-2">
             {(phases ?? []).map((p: Phase) => (
-              <PhaseControls key={p.id} phase={p} />
+              <PhaseControls
+                key={p.id}
+                phase={p}
+                firstKickoff={firstKickoffByPhase[p.id]}
+              />
             ))}
           </div>
         </section>
