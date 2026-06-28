@@ -9,7 +9,12 @@
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchMatches, teamName, groupLabelOf } from "./footballdata";
+import {
+  fetchMatches,
+  teamName,
+  groupLabelOf,
+  ninetyMinuteScore,
+} from "./footballdata";
 import { STAGE_TO_PHASE } from "./constants";
 
 export async function syncCalendar(admin: SupabaseClient): Promise<{
@@ -52,6 +57,12 @@ export async function syncCalendar(admin: SupabaseClient): Promise<{
       continue;
     }
 
+    // Guardamos SIEMPRE el marcador a los 90 minutos (sin prórroga ni
+    // penaltis): es contra lo que se puntúan los pronósticos. El ganador real
+    // del cruce (que sí incluye prórroga/penaltis) va en `winner`, y solo se
+    // usa para determinar el campeón en el cuadro.
+    const score90 = ninetyMinuteScore(fm.score);
+
     const row = {
       external_id: fm.id,
       phase_id: phaseId[phaseKey],
@@ -61,8 +72,9 @@ export async function syncCalendar(admin: SupabaseClient): Promise<{
       home_team: home,
       away_team: away,
       kickoff: fm.utcDate,
-      home_score: fm.score?.fullTime?.home ?? null,
-      away_score: fm.score?.fullTime?.away ?? null,
+      home_score: score90.home,
+      away_score: score90.away,
+      winner: fm.score?.winner ?? null,
       status: fm.status === "FINISHED" ? "FINISHED" : "SCHEDULED",
     };
 

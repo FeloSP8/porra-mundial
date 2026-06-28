@@ -19,8 +19,13 @@ export type Match = {
   home_team: string;
   away_team: string;
   kickoff: string | null;
+  // Marcador a los 90 minutos (sin prórroga ni penaltis): es contra lo que se
+  // puntúan los pronósticos.
   home_score: number | null;
   away_score: number | null;
+  // Ganador real del cruce, incluyendo prórroga/penaltis. Solo se usa para el
+  // campeón en el cuadro. HOME_TEAM | AWAY_TEAM | DRAW | null.
+  winner: string | null;
   status: "SCHEDULED" | "FINISHED";
 };
 

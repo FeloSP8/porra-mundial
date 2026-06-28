@@ -42,11 +42,14 @@ create table if not exists public.matches (
   home_team   text not null,
   away_team   text not null,
   kickoff     timestamptz,
-  home_score  int,
+  home_score  int,                        -- marcador a los 90' (sin prórroga/penaltis)
   away_score  int,
+  winner      text,                        -- HOME_TEAM | AWAY_TEAM | DRAW | null (ganador real del cruce)
   status      text not null default 'SCHEDULED', -- SCHEDULED | FINISHED
   updated_at  timestamptz not null default now()
 );
+-- Por si la tabla ya existía sin la columna `winner` (instalaciones previas).
+alter table public.matches add column if not exists winner text;
 
 create index if not exists idx_matches_phase on public.matches (phase_id);
 create index if not exists idx_matches_status on public.matches (status);

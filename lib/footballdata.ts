@@ -18,9 +18,37 @@ export type FDMatch = {
   homeTeam: { name: string | null; shortName: string | null };
   awayTeam: { name: string | null; shortName: string | null };
   score: {
+    // Ganador real del cruce (incluye prórroga y penaltis). Lo necesitamos para
+    // saber quién es el campeón, ya que el marcador a 90' puede ser un empate.
+    winner: string | null; // HOME_TEAM | AWAY_TEAM | DRAW | null
+    duration?: string; // REGULAR | EXTRA_TIME | PENALTY_SHOOTOUT
+    // Resultado final tras prórroga (sin penaltis). En partidos resueltos en el
+    // tiempo reglamentario coincide con el resultado a los 90 minutos.
     fullTime: { home: number | null; away: number | null };
+    // SOLO presente cuando hubo prórroga/penaltis: marcador tras los 90'.
+    regularTime?: { home: number | null; away: number | null } | null;
   };
 };
+
+/**
+ * Marcador a los 90 minutos (tiempo reglamentario), sin prórroga ni penaltis.
+ *
+ * football-data v4: cuando un partido va a prórroga o penaltis, `regularTime`
+ * trae el resultado tras los 90'. En partidos resueltos en el tiempo
+ * reglamentario `regularTime` no viene, así que `fullTime` ya ES el 90'.
+ * Por eso: usar `regularTime` si existe, si no `fullTime`.
+ */
+export function ninetyMinuteScore(score: FDMatch["score"]): {
+  home: number | null;
+  away: number | null;
+} {
+  const rt = score?.regularTime;
+  const ft = score?.fullTime;
+  return {
+    home: rt?.home ?? ft?.home ?? null,
+    away: rt?.away ?? ft?.away ?? null,
+  };
+}
 
 function token(): string {
   const t = process.env.FOOTBALL_DATA_TOKEN;

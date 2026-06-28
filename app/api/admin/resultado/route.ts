@@ -24,7 +24,12 @@ export async function POST(request: Request) {
   if (clear) {
     await admin
       .from("matches")
-      .update({ home_score: null, away_score: null, status: "SCHEDULED" })
+      .update({
+        home_score: null,
+        away_score: null,
+        winner: null,
+        status: "SCHEDULED",
+      })
       .eq("id", matchId);
   } else {
     const h = Number(homeScore);
@@ -42,11 +47,18 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    // El marcador manual se interpreta como el resultado a los 90'. Derivamos
+    // `winner` del propio marcador cuando es decisivo; si es empate (cruce a
+    // prórroga/penaltis) no podemos saber el ganador real desde aquí y lo
+    // dejamos como DRAW (el cuadro no acreditará campeón hasta que la API dé
+    // el ganador real).
+    const winner = h > a ? "HOME_TEAM" : a > h ? "AWAY_TEAM" : "DRAW";
     await admin
       .from("matches")
       .update({
         home_score: h,
         away_score: a,
+        winner,
         status: "FINISHED",
         updated_at: new Date().toISOString(),
       })

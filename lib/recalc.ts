@@ -175,7 +175,7 @@ export async function recalcBracket(admin: SupabaseClient): Promise<{
   // 1) Equipos reales por ronda (de los partidos KO).
   const { data: koMatches } = await admin
     .from("matches")
-    .select("stage, home_team, away_team, home_score, away_score, status");
+    .select("stage, home_team, away_team, status, winner");
 
   const realByRound: Record<RoundKey, Set<string>> = {
     r16: new Set(),
@@ -197,15 +197,12 @@ export async function recalcBracket(admin: SupabaseClient): Promise<{
     // Participar en un partido de esa stage = haber alcanzado esa ronda.
     if (m.home_team) realByRound[round].add(m.home_team);
     if (m.away_team) realByRound[round].add(m.away_team);
-    // Campeón = ganador del FINAL terminado.
-    if (
-      m.stage === "FINAL" &&
-      m.status === "FINISHED" &&
-      m.home_score !== null &&
-      m.away_score !== null
-    ) {
-      const champ =
-        m.home_score > m.away_score ? m.home_team : m.away_team;
+    // Campeón = ganador REAL del FINAL (incluye prórroga/penaltis). Usamos
+    // `winner` y no el marcador, porque a los 90' la final puede ir empatada.
+    if (m.stage === "FINAL" && m.status === "FINISHED") {
+      let champ: string | null = null;
+      if (m.winner === "HOME_TEAM") champ = m.home_team;
+      else if (m.winner === "AWAY_TEAM") champ = m.away_team;
       if (champ) realByRound.champion.add(champ);
     }
   }
