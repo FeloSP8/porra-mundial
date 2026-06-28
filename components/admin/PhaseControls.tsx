@@ -95,7 +95,18 @@ export default function PhaseControls({
 
       <button
         disabled={busy}
-        onClick={() => save({ isOpen: !phase.is_open })}
+        onClick={() => {
+          if (phase.is_open) {
+            save({ isOpen: false });
+          } else {
+            // Al abrir, guardamos también el deadline del input para que no
+            // quede bloqueada por un deadline vencido del seed.
+            save({
+              isOpen: true,
+              deadline: deadline ? new Date(deadline).toISOString() : null,
+            });
+          }
+        }}
         className={`rounded px-3 py-1 text-sm font-medium text-white disabled:opacity-50 ${
           phase.is_open ? "bg-red-600" : "bg-green-600"
         }`}

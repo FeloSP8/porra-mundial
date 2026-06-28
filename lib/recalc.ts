@@ -335,12 +335,16 @@ export async function autoOpenNextPhases(admin: SupabaseClient): Promise<{
     if (matches.length === 0) continue; // aún sin partidos cargados
     if (!matches.every((m) => m.status === "FINISHED")) continue;
 
-    // Primer kickoff de la siguiente fase → deadline de envíos.
+    // Primer kickoff FUTURO de la siguiente fase → deadline de envíos.
+    // Si ya hay partidos en curso pero quedan más, usamos el siguiente.
+    // Si todos los kickoffs ya pasaron (caso extremo), dejamos null (sin deadline).
+    const nowIso = new Date().toISOString();
     const { data: nextFirst } = await admin
       .from("matches")
       .select("kickoff")
       .eq("phase_id", next.id)
       .not("kickoff", "is", null)
+      .gt("kickoff", nowIso)
       .order("kickoff")
       .limit(1);
 
@@ -446,9 +450,11 @@ export async function autoCloseExpiredPhases(admin: SupabaseClient): Promise<{
 
 /**
  * Proceso COMPLETO de actualización (el mismo que ejecuta la rutina diaria):
- *  1. Cierra fases vencidas + penaliza a quien no envió.
- *  2. Sincroniza el calendario con football-data (marcadores + cruces nuevos).
- *  3. Abre la siguiente fase si todos los partidos de la anterior terminaron.
+ *  1. Sincroniza el calendario con football-data (marcadores + cruces nuevos).
+ *  2. Abre la siguiente fase si todos los partidos de la anterior terminaron
+ *     (con deadline = primer kickoff futuro de esa fase).
+ *  3. Cierra fases vencidas + penaliza a quien no envió.
+ *     (con los deadlines ya corregidos del paso 2)
  *  4. Calcula la clasificación real de los grupos completados.
  *  5. Recalcula puntos (partidos/grupos + cuadro).
  *
@@ -458,16 +464,8 @@ export async function autoCloseExpiredPhases(admin: SupabaseClient): Promise<{
 export async function runFullUpdate(admin: SupabaseClient) {
   const log: Record<string, unknown> = {};
 
-  // 1) Cerrar fases cuyo deadline ya pasó + penalizaciones.
-  const nowIso = new Date().toISOString();
-  await admin
-    .from("phases")
-    .update({ is_open: false })
-    .lt("deadline", nowIso)
-    .eq("is_open", true);
-  log.autoClose = await autoCloseExpiredPhases(admin);
-
-  // 2) Sincronizar con football-data (no aborta si falla la API).
+  // 1) Sincronizar con football-data (no aborta si falla la API).
+  //    Primero para tener los kickoffs actualizados antes de abrir/cerrar fases.
   const sync = await syncCalendar(admin);
   if (sync.error) log.footballDataError = sync.error;
   else
@@ -477,13 +475,24 @@ export async function runFullUpdate(admin: SupabaseClient) {
       skipped: sync.skipped,
     };
 
-  // 3) Abrir la siguiente fase si todos los partidos de la anterior terminaron.
+  // 2) Abrir la siguiente fase si todos los partidos de la anterior terminaron.
+  //    Establece el deadline al primer kickoff futuro para que el paso 3
+  //    no la cierre inmediatamente por tener un deadline del seed ya vencido.
   log.autoOpen = await autoOpenNextPhases(admin);
+
+  // 3) Cerrar fases cuyo deadline ya pasó + penalizaciones.
+  const nowIso = new Date().toISOString();
+  await admin
+    .from("phases")
+    .update({ is_open: false })
+    .lt("deadline", nowIso)
+    .eq("is_open", true);
+  log.autoClose = await autoCloseExpiredPhases(admin);
 
   // 4) Clasificación de grupos completados.
   log.groups = await computeGroupResults(admin);
 
-  // 4) Recalcular puntos.
+  // 5) Recalcular puntos.
   log.recalc = await recalcAll(admin);
   log.bracket = await recalcBracket(admin);
 
