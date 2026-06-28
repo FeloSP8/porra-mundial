@@ -1,5 +1,6 @@
 import Link from "next/link";
 import MatchCard from "@/components/MatchCard";
+import { buildMatchdays, defaultMatchdayIndex } from "@/lib/matchdays";
 import type {
   MatchdayMatch,
   UserSlim,
@@ -7,9 +8,11 @@ import type {
 } from "@/components/MatchdayView";
 
 /**
- * Vista "resumen" para la home: muestra los partidos de HOY (desde las 00:00
- * de hoy) y los que quedan por jugar, en orden temporal. Los resultados de
- * días anteriores no se muestran aquí (se ven en /jornadas con "Ver todas").
+ * Vista "resumen" para la home: muestra la JORNADA/RONDA actual COMPLETA (la
+ * primera cuyo último partido aún no ha terminado), con sus resultados ya
+ * jugados y los partidos por venir, en orden cronológico. Así se ven todos los
+ * partidos de la ronda en curso (p.ej. los 16 de dieciseisavos), no solo unos
+ * pocos.
  *
  * Regla de visibilidad de pronósticos:
  *  - Si la fase está cerrada → se muestran todos los pronósticos.
@@ -29,18 +32,10 @@ export default function HomeMatchdayCard({
   closedPhaseKeys: string[];
   currentUserId: string;
 }) {
-  // Inicio de "hoy" a las 00:00 hora de España (no la del servidor, que en
-  // Vercel es UTC). Así "hoy 15 de junio" empieza a las 00:00 españolas aunque
-  // el servidor esté en otra zona.
-  const startMs = startOfTodayInSpain();
-
-  // Partidos de hoy + futuros (con kickoff conocido), ordenados por fecha.
-  const upcoming = matches
-    .filter((m) => m.kickoff && Date.parse(m.kickoff) >= startMs)
-    .sort((a, b) => Date.parse(a.kickoff!) - Date.parse(b.kickoff!));
-
-  // Limitar para no hacer la home enorme: los próximos ~10 partidos.
-  const shown = upcoming.slice(0, 10);
+  // Jornada/ronda actual completa (resultados + partidos por venir).
+  const matchdays = buildMatchdays(matches);
+  const current = matchdays[defaultMatchdayIndex(matchdays)] ?? null;
+  const shown = current?.matches ?? [];
 
   if (shown.length === 0) {
     return (
@@ -88,7 +83,9 @@ export default function HomeMatchdayCard({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">⚽ Hoy y próximos partidos</h2>
+          <h2 className="text-lg font-semibold">
+            ⚽ {current?.longLabel ?? "Partidos"}
+          </h2>
           <p className="text-xs text-slate-500">
             {reveal
               ? "Resultados, y los pronósticos de quienes ya enviaron."
@@ -117,36 +114,4 @@ export default function HomeMatchdayCard({
       </div>
     </section>
   );
-}
-
-/**
- * Devuelve el timestamp (ms) de las 00:00 de HOY en hora de España
- * (Europe/Madrid), independientemente de la zona horaria del servidor.
- */
-function startOfTodayInSpain(): number {
-  const now = new Date();
-  // Partes de fecha "ahora" tal como se ven en España.
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Madrid",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const ymd = fmt.format(now); // "2026-06-15"
-  // El offset de España (en min) en este momento: comparar la misma fecha
-  // formateada con hora vs UTC. Más simple: construir medianoche local con el
-  // offset actual de Madrid.
-  const offsetMin = madridOffsetMinutes(now);
-  // Medianoche en España = ese día a las 00:00, expresado en UTC restando el offset.
-  return Date.parse(`${ymd}T00:00:00Z`) - offsetMin * 60_000;
-}
-
-/** Offset de Europe/Madrid respecto a UTC, en minutos, para una fecha dada. */
-function madridOffsetMinutes(date: Date): number {
-  // Hora "vista" en Madrid vs UTC, derivada de Intl.
-  const madrid = new Date(
-    date.toLocaleString("en-US", { timeZone: "Europe/Madrid" })
-  );
-  const utc = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
-  return Math.round((madrid.getTime() - utc.getTime()) / 60_000);
 }
