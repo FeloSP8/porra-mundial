@@ -50,6 +50,18 @@ export default function PhaseControls({
     router.refresh();
   }
 
+  async function resetEnvios() {
+    if (!confirm(`¿Borrar todos los envíos y penalizaciones de "${phase.name}"? Los jugadores podrán volver a enviar.`)) return;
+    setBusy(true);
+    await fetch("/api/admin/reset-envios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phaseId: phase.id }),
+    });
+    setBusy(false);
+    router.refresh();
+  }
+
   const deadlinePassed =
     !!phase.deadline && new Date(phase.deadline) < new Date();
 
@@ -91,6 +103,14 @@ export default function PhaseControls({
         className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
       >
         Guardar fecha
+      </button>
+
+      <button
+        disabled={busy}
+        onClick={resetEnvios}
+        className="rounded border border-amber-300 px-3 py-1 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+      >
+        Resetear envíos
       </button>
 
       <button
