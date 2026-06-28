@@ -7,7 +7,7 @@ import {
   loneHits,
   topSeer,
   groupMastery,
-  bracketLeaders,
+  bracketStats,
   type ResultMatch,
   type Pred,
   type StatUser,
@@ -32,13 +32,22 @@ export default async function EstadisticasPage() {
     </div>
   );
 
-  // Partidos YA jugados, con resultado real (a los 90').
+  // Todos los partidos (para resultados a 90' y para la realidad del cuadro).
   const { data: matchRows } = await supabase
     .from("matches")
-    .select("id, home_team, away_team, group_label, home_score, away_score, status")
-    .eq("status", "FINISHED");
-  const matches: ResultMatch[] = (matchRows ?? [])
-    .filter((m) => m.home_score !== null && m.away_score !== null)
+    .select(
+      "id, stage, home_team, away_team, group_label, home_score, away_score, status, winner"
+    );
+  const allMatches = matchRows ?? [];
+
+  // Partidos YA jugados, con resultado real (a los 90'), para los aciertos.
+  const matches: ResultMatch[] = allMatches
+    .filter(
+      (m) =>
+        m.status === "FINISHED" &&
+        m.home_score !== null &&
+        m.away_score !== null
+    )
     .map((m) => ({
       id: m.id,
       home_team: m.home_team,
@@ -89,16 +98,45 @@ export default async function EstadisticasPage() {
     .select("user_id, group_label, team, predicted_rank");
   const groupPreds = (groupPredRows ?? []) as GroupPred[];
 
-  // Cuadro (aciertos de avance ya computados en points_awarded).
+  // Cuadro: picks de cada jugador (el equipo que hizo ganar cada cruce).
   const { data: bracketRows } = await supabase
     .from("bracket_predictions")
-    .select("user_id, round, team, points_awarded");
-  const bracket: BracketRow[] = (bracketRows ?? []).map((b) => ({
-    user_id: b.user_id,
-    round: b.round,
-    team: b.team,
-    points: b.points_awarded ?? 0,
-  }));
+    .select("user_id, round, team");
+  const bracket: BracketRow[] = (bracketRows ?? []) as BracketRow[];
+
+  // Realidad del cuadro: equipos que alcanzaron cada ronda KO + eliminados.
+  const STAGE_TO_TARGET: Record<string, string> = {
+    LAST_16: "r16",
+    QUARTER_FINALS: "qf",
+    SEMI_FINALS: "sf",
+    FINAL: "final",
+  };
+  const realByRound: Record<string, Set<string>> = {
+    r16: new Set(),
+    qf: new Set(),
+    sf: new Set(),
+    final: new Set(),
+    champion: new Set(),
+  };
+  const eliminated = new Set<string>();
+  for (const m of allMatches) {
+    const target = m.stage ? STAGE_TO_TARGET[m.stage] : undefined;
+    if (target) {
+      if (m.home_team) realByRound[target].add(m.home_team);
+      if (m.away_team) realByRound[target].add(m.away_team);
+    }
+    // Campeón = ganador real de la final terminada.
+    if (m.stage === "FINAL" && m.status === "FINISHED") {
+      if (m.winner === "HOME_TEAM") realByRound.champion.add(m.home_team);
+      else if (m.winner === "AWAY_TEAM") realByRound.champion.add(m.away_team);
+    }
+    // Eliminados: el perdedor de cualquier cruce KO terminado.
+    const isKO = m.stage && m.stage !== "GROUP_STAGE";
+    if (isKO && m.status === "FINISHED") {
+      if (m.winner === "HOME_TEAM") eliminated.add(m.away_team);
+      else if (m.winner === "AWAY_TEAM") eliminated.add(m.home_team);
+    }
+  }
 
   // --- Cálculos ---
   const players = playerAccuracy(preds, matches, users);
@@ -110,7 +148,7 @@ export default async function EstadisticasPage() {
 
   const hits = loneHits(preds, matches, users, 3);
   const groupMasters = groupMastery(groupPreds, groupResults, users);
-  const bracketLb = bracketLeaders(bracket, users).filter((b) => b.points > 0);
+  const bracket_ = bracketStats(bracket, users, realByRound, eliminated);
 
   const stats = {
     finishedCount: matches.length,
@@ -119,9 +157,10 @@ export default async function EstadisticasPage() {
     bestNose: bestNose(players, minPredicted),
     seer: topSeer(hits),
     topGroupMaster: groupMasters[0] ?? null,
+    topBracket: bracket_[0] ?? null,
     loneHits: hits.slice(0, 8),
     groupMasters,
-    bracketLeaders: bracketLb,
+    bracket: bracket_,
   };
 
   return (

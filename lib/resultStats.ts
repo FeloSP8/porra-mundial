@@ -298,51 +298,109 @@ export function groupMastery(
 }
 
 // ---------------------------------------------------------------------------
-//  4) Aciertos del cuadro (quién hizo avanzar/campeón a los equipos correctos).
+//  4) Aciertos del CUADRO completo (a quién hizo avanzar correctamente en cada
+//     ronda, y el pronóstico de campeón).
 // ---------------------------------------------------------------------------
 
+/** Un pick del cuadro: el equipo que el jugador hizo ganar un cruce. */
 export type BracketRow = {
   user_id: string;
   round: string; // r32 | r16 | qf | sf | final | champion
   team: string;
-  points: number; // points_awarded (1 si el equipo alcanzó la ronda a la que avanzó)
 };
 
-export type BracketLeader = {
+export type RoundBucket = {
+  /** ronda alcanzada (r16|qf|sf|final|champion) */
+  key: string;
+  label: string;
+  correct: number;
+  total: number;
+};
+
+export type BracketStat = {
   userId: string;
   user: string;
-  /** aciertos totales de avance (suma de puntos del cuadro) */
-  points: number;
-  /** acertó el campeón */
+  /** total de aciertos de avance en rondas ya decididas */
+  total: number;
+  byRound: RoundBucket[];
+  /** equipo que pronosticó campeón */
+  championTeam: string | null;
+  /** ya es campeón (acertó) */
   championHit: boolean;
+  /** su campeón sigue vivo (ni eliminado ni decidido aún) */
+  championAlive: boolean;
 };
 
+// Un pick de la ronda X significa "este equipo gana su cruce de X y ALCANZA la
+// ronda siguiente". El slot 'final' se ignora (es redundante con 'champion').
+const SOURCE_TO_TARGET: Record<string, { target: string; label: string }> = {
+  r32: { target: "r16", label: "Octavos" },
+  r16: { target: "qf", label: "Cuartos" },
+  qf: { target: "sf", label: "Semifinales" },
+  sf: { target: "final", label: "Final" },
+  champion: { target: "champion", label: "Campeón" },
+};
+const SOURCE_ORDER = ["r32", "r16", "qf", "sf", "champion"];
+
 /**
- * Ranking del cuadro: suma de aciertos de avance por jugador + si clavó el
- * campeón. Ordena por puntos desc.
+ * Estadísticas del cuadro por jugador.
+ *
+ * @param realByRound  ronda alcanzada (r16|qf|sf|final|champion) -> equipos que
+ *                     realmente la alcanzaron. Solo se evalúan las rondas con
+ *                     conjunto no vacío (ya decididas).
+ * @param eliminated   equipos ya eliminados (para marcar campeones "muertos").
  */
-export function bracketLeaders(
+export function bracketStats(
   rows: BracketRow[],
-  users: StatUser[]
-): BracketLeader[] {
+  users: StatUser[],
+  realByRound: Record<string, Set<string>>,
+  eliminated: Set<string> = new Set()
+): BracketStat[] {
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
-  const agg = new Map<string, { points: number; champion: boolean }>();
+  // user -> (source round -> equipos)
+  const byUser = new Map<string, Map<string, string[]>>();
+  const championOf = new Map<string, string>();
   for (const r of rows) {
-    const e = agg.get(r.user_id) ?? { points: 0, champion: false };
-    e.points += r.points;
-    if (r.round === "champion" && r.points > 0) e.champion = true;
-    agg.set(r.user_id, e);
+    if (r.round === "champion") championOf.set(r.user_id, r.team);
+    if (!SOURCE_TO_TARGET[r.round]) continue;
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, new Map());
+    const m = byUser.get(r.user_id)!;
+    if (!m.has(r.round)) m.set(r.round, []);
+    m.get(r.round)!.push(r.team);
   }
-  const out: BracketLeader[] = [];
-  for (const [uid, e] of agg) {
+
+  const out: BracketStat[] = [];
+  const allUserIds = new Set<string>([...byUser.keys(), ...championOf.keys()]);
+  for (const uid of allUserIds) {
+    const m = byUser.get(uid) ?? new Map<string, string[]>();
+    const buckets: RoundBucket[] = [];
+    let total = 0;
+    for (const src of SOURCE_ORDER) {
+      const { target, label } = SOURCE_TO_TARGET[src];
+      const real = realByRound[target];
+      if (!real || real.size === 0) continue; // ronda aún no decidida
+      const teams = m.get(src) ?? [];
+      if (teams.length === 0) continue;
+      let correct = 0;
+      for (const t of teams) if (real.has(t)) correct++;
+      buckets.push({ key: target, label, correct, total: teams.length });
+      total += correct;
+    }
+    const championTeam = championOf.get(uid) ?? null;
+    const championReal = realByRound["champion"];
+    const championHit =
+      !!championTeam && !!championReal && championReal.has(championTeam);
+    const championAlive =
+      !!championTeam && !championHit && !eliminated.has(championTeam);
     out.push({
       userId: uid,
       user: nameOf.get(uid) ?? "—",
-      points: e.points,
-      championHit: e.champion,
+      total,
+      byRound: buckets,
+      championTeam,
+      championHit,
+      championAlive,
     });
   }
-  return out.sort(
-    (a, b) => b.points - a.points || a.user.localeCompare(b.user)
-  );
+  return out.sort((a, b) => b.total - a.total || a.user.localeCompare(b.user));
 }

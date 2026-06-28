@@ -15,7 +15,7 @@ import type {
   PlayerAccuracy,
   LoneHit,
   GroupMastery,
-  BracketLeader,
+  BracketStat,
 } from "@/lib/resultStats";
 
 type Stats = {
@@ -25,9 +25,10 @@ type Stats = {
   bestNose: PlayerAccuracy | null;
   seer: { user: string; userId: string; count: number } | null;
   topGroupMaster: GroupMastery | null;
+  topBracket: BracketStat | null;
   loneHits: LoneHit[];
   groupMasters: GroupMastery[];
-  bracketLeaders: BracketLeader[];
+  bracket: BracketStat[];
 };
 
 const PITCH = "#0b6e4f";
@@ -84,6 +85,16 @@ export default function StatsView({ stats }: { stats: Stats }) {
                   } perfecto${stats.topGroupMaster.perfectGroups === 1 ? "" : "s"}`
                 : ""
             }`}
+          />
+        )}
+        {stats.topBracket && stats.topBracket.total > 0 && (
+          <Highlight
+            emoji="🥇"
+            label="Mejor cuadro"
+            name={stats.topBracket.user}
+            sub={`${stats.topBracket.total} acierto${
+              stats.topBracket.total === 1 ? "" : "s"
+            } de avance`}
           />
         )}
       </div>
@@ -240,26 +251,54 @@ export default function StatsView({ stats }: { stats: Stats }) {
         </Card>
       )}
 
-      {/* Cuadro: quién acertó los que avanzan */}
-      {stats.bracketLeaders.length > 0 && (
-        <Card title="🥇 El cuadro: quién acierta a los que avanzan">
-          <ul className="space-y-2">
-            {stats.bracketLeaders.map((b, i) => (
-              <li
-                key={b.userId}
-                className="flex items-center justify-between gap-2 text-sm"
-              >
-                <span className="font-medium">
-                  {medal(i)} {b.user}
-                  {b.championHit && (
-                    <span className="ml-1 text-xs text-amber-600">
-                      👑 campeón
+      {/* Cuadro completo: aciertos de avance por ronda + campeón */}
+      {stats.bracket.length > 0 && (
+        <Card title="🥇 El cuadro completo">
+          <p className="mb-2 text-xs text-slate-500">
+            Aciertos de avance en cada ronda ya decidida y a quién pusiste
+            campeón.
+          </p>
+          <ul className="space-y-3">
+            {stats.bracket.map((b, i) => (
+              <li key={b.userId} className="border-b pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-medium">
+                    {medal(i)} {b.user}
+                  </span>
+                  <span className="tabular-nums font-semibold text-pitch">
+                    {b.total} acierto{b.total === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {/* Desglose por ronda */}
+                {b.byRound.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {b.byRound.map((r) => (
+                      <span
+                        key={r.key}
+                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] tabular-nums text-slate-600"
+                      >
+                        {r.label} {r.correct}/{r.total}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Campeón pronosticado */}
+                {b.championTeam && (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs">
+                    <span className="text-slate-400">Campeón:</span>
+                    <Flag team={b.championTeam} />
+                    <span className="font-medium">
+                      {esName(b.championTeam)}
                     </span>
-                  )}
-                </span>
-                <span className="tabular-nums text-slate-500">
-                  {b.points} acierto{b.points === 1 ? "" : "s"}
-                </span>
+                    {b.championHit ? (
+                      <span className="text-amber-600">👑 ¡acertado!</span>
+                    ) : b.championAlive ? (
+                      <span className="text-pitch">sigue vivo ✅</span>
+                    ) : (
+                      <span className="text-slate-400">eliminado ❌</span>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

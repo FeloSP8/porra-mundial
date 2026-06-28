@@ -6,7 +6,7 @@ import {
   loneHits,
   topSeer,
   groupMastery,
-  bracketLeaders,
+  bracketStats,
   type StatUser,
   type ResultMatch,
   type Pred,
@@ -156,19 +156,59 @@ describe("groupMastery", () => {
   });
 });
 
-describe("bracketLeaders", () => {
-  it("suma aciertos de avance y marca al que acierta el campeón", () => {
-    const rows: BracketRow[] = [
-      { user_id: "u1", round: "r16", team: "Spain", points: 1 },
-      { user_id: "u1", round: "champion", team: "Spain", points: 1 },
-      { user_id: "u2", round: "r16", team: "Brazil", points: 0 },
-    ];
-    const lb = bracketLeaders(rows, users);
-    expect(lb[0].user).toBe("Ana");
-    expect(lb[0].points).toBe(2);
-    expect(lb[0].championHit).toBe(true);
-    const bea = lb.find((x) => x.user === "Bea")!;
-    expect(bea.points).toBe(0);
-    expect(bea.championHit).toBe(false);
+describe("bracketStats", () => {
+  // Ana hace avanzar a Spain y Brazil a octavos; pone a Spain campeón.
+  // Bea hace avanzar a Japan (mal) y Brazil (bien); pone a Japan campeón.
+  const rows: BracketRow[] = [
+    { user_id: "u1", round: "r32", team: "Spain" },
+    { user_id: "u1", round: "r32", team: "Brazil" },
+    { user_id: "u1", round: "final", team: "Spain" }, // redundante, se ignora
+    { user_id: "u1", round: "champion", team: "Spain" },
+    { user_id: "u2", round: "r32", team: "Japan" },
+    { user_id: "u2", round: "r32", team: "Brazil" },
+    { user_id: "u2", round: "champion", team: "Japan" },
+  ];
+  // Realidad: Spain y Brazil alcanzaron octavos. Japan eliminado. Campeón sin decidir.
+  const realByRound = {
+    r16: new Set(["Spain", "Brazil"]),
+    qf: new Set<string>(),
+    sf: new Set<string>(),
+    final: new Set<string>(),
+    champion: new Set<string>(),
+  };
+  const eliminated = new Set(["Japan"]);
+
+  it("cuenta aciertos de avance por ronda decidida e ignora el slot 'final'", () => {
+    const st = bracketStats(rows, users, realByRound, eliminated);
+    const ana = st.find((x) => x.user === "Ana")!;
+    expect(ana.total).toBe(2); // Spain + Brazil a octavos
+    const oct = ana.byRound.find((b) => b.key === "r16")!;
+    expect(oct).toEqual({ key: "r16", label: "Octavos", correct: 2, total: 2 });
+    // Campeón aún sin decidir: ni acertado, pero Spain sigue vivo.
+    expect(ana.championTeam).toBe("Spain");
+    expect(ana.championHit).toBe(false);
+    expect(ana.championAlive).toBe(true);
+  });
+
+  it("marca el campeón eliminado como no vivo y lidera quien más acierta", () => {
+    const st = bracketStats(rows, users, realByRound, eliminated);
+    expect(st[0].user).toBe("Ana"); // 2 > 1
+    const bea = st.find((x) => x.user === "Bea")!;
+    expect(bea.total).toBe(1); // solo Brazil
+    expect(bea.championTeam).toBe("Japan");
+    expect(bea.championAlive).toBe(false); // Japan eliminado
+  });
+
+  it("no evalúa rondas todavía sin resultado", () => {
+    const sinResultados = {
+      r16: new Set<string>(),
+      qf: new Set<string>(),
+      sf: new Set<string>(),
+      final: new Set<string>(),
+      champion: new Set<string>(),
+    };
+    const st = bracketStats(rows, users, sinResultados, new Set());
+    expect(st[0].total).toBe(0);
+    expect(st.every((s) => s.byRound.length === 0)).toBe(true);
   });
 });
