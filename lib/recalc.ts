@@ -299,6 +299,65 @@ export function computePenalty(
 }
 
 /**
+ * Auto-apertura de la siguiente fase cuando todos los partidos de la anterior
+ * han terminado. Establece el deadline al kickoff del primer partido de la
+ * nueva fase (o null si todavía no se conocen los cruces).
+ *
+ * Idempotente: si la siguiente fase ya está abierta no hace nada.
+ * NO actúa sobre la fase virtual 'bracket'.
+ */
+export async function autoOpenNextPhases(admin: SupabaseClient): Promise<{
+  phasesOpened: number;
+}> {
+  const { data: phases } = await admin
+    .from("phases")
+    .select("id, key, order, is_open")
+    .neq("key", "bracket")
+    .order("order");
+
+  if (!phases || phases.length === 0) return { phasesOpened: 0 };
+
+  let phasesOpened = 0;
+
+  for (let i = 0; i < phases.length - 1; i++) {
+    const current = phases[i];
+    const next = phases[i + 1];
+
+    if (next.is_open) continue; // ya abierta
+
+    // ¿Todos los partidos de la fase actual han terminado?
+    const { data: currentMatches } = await admin
+      .from("matches")
+      .select("id, status")
+      .eq("phase_id", current.id);
+
+    const matches = currentMatches ?? [];
+    if (matches.length === 0) continue; // aún sin partidos cargados
+    if (!matches.every((m) => m.status === "FINISHED")) continue;
+
+    // Primer kickoff de la siguiente fase → deadline de envíos.
+    const { data: nextFirst } = await admin
+      .from("matches")
+      .select("kickoff")
+      .eq("phase_id", next.id)
+      .not("kickoff", "is", null)
+      .order("kickoff")
+      .limit(1);
+
+    const firstKickoff: string | null = nextFirst?.[0]?.kickoff ?? null;
+
+    await admin
+      .from("phases")
+      .update({ is_open: true, deadline: firstKickoff })
+      .eq("id", next.id);
+
+    phasesOpened++;
+  }
+
+  return { phasesOpened };
+}
+
+/**
  * Auto-cierre de fases vencidas: a quien NO haya enviado una fase de partidos
  * cuyo deadline ya pasó, se le marca como enviado igualmente y se le aplica una
  * penalización de PENALTY_PER_MISSING puntos por cada partido de la fase del
@@ -389,8 +448,9 @@ export async function autoCloseExpiredPhases(admin: SupabaseClient): Promise<{
  * Proceso COMPLETO de actualización (el mismo que ejecuta la rutina diaria):
  *  1. Cierra fases vencidas + penaliza a quien no envió.
  *  2. Sincroniza el calendario con football-data (marcadores + cruces nuevos).
- *  3. Calcula la clasificación real de los grupos completados.
- *  4. Recalcula puntos (partidos/grupos + cuadro).
+ *  3. Abre la siguiente fase si todos los partidos de la anterior terminaron.
+ *  4. Calcula la clasificación real de los grupos completados.
+ *  5. Recalcula puntos (partidos/grupos + cuadro).
  *
  * Lo usan el cron (`/api/cron/...`) y el botón del panel admin
  * (`/api/admin/actualizar`), para tener una única fuente de verdad.
@@ -417,7 +477,10 @@ export async function runFullUpdate(admin: SupabaseClient) {
       skipped: sync.skipped,
     };
 
-  // 3) Clasificación de grupos completados.
+  // 3) Abrir la siguiente fase si todos los partidos de la anterior terminaron.
+  log.autoOpen = await autoOpenNextPhases(admin);
+
+  // 4) Clasificación de grupos completados.
   log.groups = await computeGroupResults(admin);
 
   // 4) Recalcular puntos.
