@@ -300,7 +300,9 @@ export function computePenalty(
  * han terminado. Establece el deadline al kickoff del primer partido de la
  * nueva fase (o null si todavía no se conocen los cruces).
  *
- * Idempotente: si la siguiente fase ya está abierta no hace nada.
+ * Idempotente: si la siguiente fase ya está abierta no hace nada. Tampoco
+ * REABRE una fase que ya empezó (con partidos terminados, marcadores reales o
+ * cuyo primer partido ya arrancó), para no resucitar una ronda en curso.
  * NO actúa sobre la fase virtual 'bracket'.
  */
 export async function autoOpenNextPhases(admin: SupabaseClient): Promise<{
@@ -332,20 +334,31 @@ export async function autoOpenNextPhases(admin: SupabaseClient): Promise<{
     if (matches.length === 0) continue; // aún sin partidos cargados
     if (!matches.every((m) => m.status === "FINISHED")) continue;
 
-    // Primer kickoff FUTURO de la siguiente fase → deadline de envíos.
-    // Si ya hay partidos en curso pero quedan más, usamos el siguiente.
-    // Si todos los kickoffs ya pasaron (caso extremo), dejamos null (sin deadline).
-    const nowIso = new Date().toISOString();
-    const { data: nextFirst } = await admin
+    // Partidos de la siguiente fase (estado, hora y marcador).
+    const { data: nextMatches } = await admin
       .from("matches")
-      .select("kickoff")
-      .eq("phase_id", next.id)
-      .not("kickoff", "is", null)
-      .gt("kickoff", nowIso)
-      .order("kickoff")
-      .limit(1);
+      .select("kickoff, status, home_score, away_score")
+      .eq("phase_id", next.id);
+    const nm = nextMatches ?? [];
 
-    const firstKickoff: string | null = nextFirst?.[0]?.kickoff ?? null;
+    // NUNCA reabrir una fase que YA empezó: si tiene algún partido terminado,
+    // algún marcador real, o su primer partido ya arrancó, se queda como está.
+    const nowMs = Date.now();
+    const yaEmpezo = nm.some(
+      (m) =>
+        m.status === "FINISHED" ||
+        m.home_score !== null ||
+        m.away_score !== null ||
+        (m.kickoff && Date.parse(m.kickoff) <= nowMs)
+    );
+    if (yaEmpezo) continue;
+
+    // Primer kickoff FUTURO de la siguiente fase → deadline de envíos.
+    const futuros = nm
+      .map((m) => m.kickoff)
+      .filter((k): k is string => !!k && Date.parse(k) > nowMs)
+      .sort();
+    const firstKickoff: string | null = futuros[0] ?? null;
 
     await admin
       .from("phases")
