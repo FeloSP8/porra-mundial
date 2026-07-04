@@ -15,19 +15,34 @@ import {
   type GroupResultRow,
   type BracketRow,
 } from "@/lib/resultStats";
+import {
+  biggestWins,
+  mostAgreedMatches,
+  mostDividedMatches,
+  mostUnanimousTeam,
+  mostDividedTeam,
+  favoriteAndVictim,
+  playerGoals,
+  mostCommonScoreline,
+  originality,
+  type StatMatch,
+  type StatPrediction,
+} from "@/lib/predictionStats";
 import StatsView from "@/components/StatsView";
+import PredictionStatsView from "@/components/PredictionStatsView";
 
 export const dynamic = "force-dynamic";
 
 export default async function EstadisticasPage() {
-  await requireProfile();
+  const me = await requireProfile();
   const supabase = createClient();
 
   const header = (
     <div>
       <h1 className="text-2xl font-bold">📈 Estadísticas</h1>
       <p className="text-sm text-slate-600">
-        Aciertos de toda la peña sobre los resultados ya jugados.
+        Aciertos sobre lo ya jugado y lo que pronostica la peña en la próxima
+        ronda.
       </p>
     </div>
   );
@@ -36,7 +51,7 @@ export default async function EstadisticasPage() {
   const { data: matchRows } = await supabase
     .from("matches")
     .select(
-      "id, stage, home_team, away_team, group_label, home_score, away_score, status, winner"
+      "id, phase_id, stage, home_team, away_team, group_label, home_score, away_score, status, winner"
     );
   const allMatches = matchRows ?? [];
 
@@ -163,10 +178,115 @@ export default async function EstadisticasPage() {
     bracket: bracket_,
   };
 
+  // ---------------------------------------------------------------------------
+  //  Consenso de la PRÓXIMA ronda ya enviada pero aún sin jugar (p.ej. octavos).
+  //  Privacidad: solo se muestra si YO la he enviado, y se calcula sobre quienes
+  //  también la han enviado.
+  // ---------------------------------------------------------------------------
+  const predictionStats = await buildPredictionStats(
+    supabase,
+    me.id,
+    allMatches,
+    users
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {header}
-      <StatsView stats={stats} />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">🎯 Aciertos (fases ya jugadas)</h2>
+        <StatsView stats={stats} />
+      </section>
+
+      {predictionStats && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">
+            🔮 Predicciones de {predictionStats.phaseName}
+          </h2>
+          <PredictionStatsView stats={predictionStats} />
+        </section>
+      )}
     </div>
   );
+}
+
+/**
+ * Estadísticas de consenso de la primera ronda de partidos (por orden) que
+ * cumple: tiene partidos, ninguno se ha jugado aún, el usuario actual la ha
+ * enviado y hay al menos 2 envíos. Devuelve null si no hay ninguna.
+ */
+async function buildPredictionStats(
+  supabase: ReturnType<typeof createClient>,
+  myId: string,
+  allMatches: any[],
+  users: StatUser[]
+) {
+  const { data: phaseRows } = await supabase
+    .from("phases")
+    .select("id, key, name, order")
+    .neq("key", "bracket")
+    .order("order");
+  const phases = phaseRows ?? [];
+
+  const { data: subRows } = await supabase
+    .from("submissions")
+    .select("user_id, phase_id");
+  const submittedByPhase = new Map<number, Set<string>>();
+  for (const s of subRows ?? []) {
+    if (!submittedByPhase.has(s.phase_id))
+      submittedByPhase.set(s.phase_id, new Set());
+    submittedByPhase.get(s.phase_id)!.add(s.user_id);
+  }
+
+  // Partidos por fase.
+  const byPhase = new Map<number, any[]>();
+  for (const m of allMatches) {
+    if (!byPhase.has(m.phase_id)) byPhase.set(m.phase_id, []);
+    byPhase.get(m.phase_id)!.push(m);
+  }
+
+  // Primera fase (por orden) sin jugar, que yo he enviado y con >= 2 envíos.
+  const target = phases.find((p) => {
+    const ms = byPhase.get(p.id) ?? [];
+    if (ms.length === 0) return false;
+    const nonesPlayed = ms.every((m) => m.status !== "FINISHED");
+    const submitters = submittedByPhase.get(p.id) ?? new Set<string>();
+    return nonesPlayed && submitters.has(myId) && submitters.size >= 2;
+  });
+  if (!target) return null;
+
+  const submitters = [...(submittedByPhase.get(target.id) ?? new Set())];
+  const phaseMatches: StatMatch[] = (byPhase.get(target.id) ?? []).map((m) => ({
+    id: m.id,
+    home_team: m.home_team,
+    away_team: m.away_team,
+    group_label: m.group_label,
+  }));
+  const phaseMatchIds = phaseMatches.map((m) => m.id);
+
+  const { data: predRows } = phaseMatchIds.length
+    ? await supabase
+        .from("predictions")
+        .select("user_id, match_id, pred_home, pred_away")
+        .in("match_id", phaseMatchIds)
+        .in("user_id", submitters)
+    : { data: [] as any[] };
+  const phasePreds = (predRows ?? []) as StatPrediction[];
+
+  const { favorite, victim } = favoriteAndVictim(phasePreds, phaseMatches);
+  return {
+    phaseName: target.name,
+    submittedCount: submitters.length,
+    biggestWins: biggestWins(phasePreds, phaseMatches, users, 3),
+    mostAgreed: mostAgreedMatches(phasePreds, phaseMatches, 3),
+    mostDivided: mostDividedMatches(phasePreds, phaseMatches, 3),
+    unanimousTeam: mostUnanimousTeam(phasePreds, phaseMatches),
+    dividedTeam: mostDividedTeam(phasePreds, phaseMatches),
+    favorite,
+    victim,
+    playerGoals: playerGoals(phasePreds, users),
+    commonScore: mostCommonScoreline(phasePreds),
+    originality: originality(phasePreds, phaseMatches, users),
+  };
 }
