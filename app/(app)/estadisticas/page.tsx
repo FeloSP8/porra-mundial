@@ -153,30 +153,54 @@ export default async function EstadisticasPage() {
     }
   }
 
-  // --- Cálculos ---
-  const players = playerAccuracy(preds, matches, users);
-  const maxPredicted = players[0]
-    ? Math.max(...players.map((p) => p.predicted))
-    : 0;
-  // Para el "mejor olfato" exigimos una muestra mínima (la mitad del máximo).
-  const minPredicted = Math.max(1, Math.ceil(maxPredicted / 2));
-
-  const hits = loneHits(preds, matches, users, 3);
+  // --- Estadísticas GENERALES (todas las fases jugadas) ---
   const groupMasters = groupMastery(groupPreds, groupResults, users);
   const bracket_ = bracketStats(bracket, users, realByRound, eliminated);
-
-  const stats = {
-    finishedCount: matches.length,
-    players,
-    exactKing: exactScoreKing(players),
-    bestNose: bestNose(players, minPredicted),
-    seer: topSeer(hits),
+  const generalStats = {
+    ...accuracyBlock(matches, preds, users),
     topGroupMaster: groupMasters[0] ?? null,
-    topBracket: bracket_[0] ?? null,
-    loneHits: hits.slice(0, 8),
     groupMasters,
+    topBracket: bracket_[0] ?? null,
     bracket: bracket_,
   };
+
+  // --- Estadísticas de la ÚLTIMA fase jugada, solo esa (p.ej. dieciseisavos) ---
+  const { data: phaseRows } = await supabase
+    .from("phases")
+    .select("id, key, name, order")
+    .neq("key", "bracket")
+    .order("order");
+  const phasesOrdered = phaseRows ?? [];
+  const lastPlayed = [...phasesOrdered]
+    .reverse()
+    .find((p) =>
+      allMatches.some((m) => m.phase_id === p.id && m.status === "FINISHED")
+    );
+
+  const lastMatches: ResultMatch[] = lastPlayed
+    ? allMatches
+        .filter(
+          (m) =>
+            m.phase_id === lastPlayed.id &&
+            m.status === "FINISHED" &&
+            m.home_score !== null &&
+            m.away_score !== null
+        )
+        .map((m) => ({
+          id: m.id,
+          home_team: m.home_team,
+          away_team: m.away_team,
+          group_label: m.group_label,
+          home_score: m.home_score as number,
+          away_score: m.away_score as number,
+        }))
+    : [];
+  const lastMatchIds = new Set(lastMatches.map((m) => m.id));
+  const lastPreds = preds.filter((p) => lastMatchIds.has(p.match_id));
+  const lastPhaseStats =
+    lastPlayed && lastMatches.length > 0
+      ? accuracyBlock(lastMatches, lastPreds, users)
+      : null;
 
   // ---------------------------------------------------------------------------
   //  Consenso de la PRÓXIMA ronda ya enviada pero aún sin jugar (p.ej. octavos).
@@ -194,11 +218,15 @@ export default async function EstadisticasPage() {
     <div className="space-y-6">
       {header}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">🎯 Aciertos (fases ya jugadas)</h2>
-        <StatsView stats={stats} />
-      </section>
+      {/* 1) Última fase jugada, solo esa. */}
+      {lastPhaseStats && lastPlayed && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">📊 {lastPlayed.name}</h2>
+          <StatsView stats={lastPhaseStats} />
+        </section>
+      )}
 
+      {/* 2) Predicciones de la próxima ronda (octavos). */}
       {predictionStats && (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">
@@ -207,8 +235,45 @@ export default async function EstadisticasPage() {
           <PredictionStatsView stats={predictionStats} />
         </section>
       )}
+
+      {/* 3) Estadísticas generales (todas las fases jugadas). */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">🌍 Estadísticas generales</h2>
+        <StatsView stats={generalStats} />
+      </section>
     </div>
   );
+}
+
+/**
+ * Bloque de aciertos (precisión, marcador exacto, olfato, vidente) para un
+ * conjunto de partidos jugados. Sin grupos ni cuadro (se añaden aparte en las
+ * generales).
+ */
+function accuracyBlock(
+  matches: ResultMatch[],
+  preds: Pred[],
+  users: StatUser[]
+) {
+  const players = playerAccuracy(preds, matches, users);
+  const maxPredicted = players[0]
+    ? Math.max(...players.map((p) => p.predicted))
+    : 0;
+  // Para el "mejor olfato" exigimos una muestra mínima (la mitad del máximo).
+  const minPredicted = Math.max(1, Math.ceil(maxPredicted / 2));
+  const hits = loneHits(preds, matches, users, 3);
+  return {
+    finishedCount: matches.length,
+    players,
+    exactKing: exactScoreKing(players),
+    bestNose: bestNose(players, minPredicted),
+    seer: topSeer(hits),
+    loneHits: hits.slice(0, 8),
+    topGroupMaster: null,
+    groupMasters: [],
+    topBracket: null,
+    bracket: [],
+  };
 }
 
 /**
