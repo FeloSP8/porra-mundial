@@ -11,7 +11,11 @@ import { computeStandings, playerSlug } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: { ganador?: string };
+}) {
   const profile = await requireProfile();
   const supabase = createClient();
 
@@ -43,18 +47,33 @@ export default async function HomePage() {
 
   const matchdayData = await loadMatchdayData(profile.id);
 
-  // ¿Ha terminado el torneo? (final jugada) → mostramos al ganador de la porra.
-  const { data: finalMatch } = await supabase
-    .from("matches")
-    .select("id")
-    .eq("stage", "FINAL")
-    .eq("status", "FINISHED")
-    .limit(1)
-    .maybeSingle();
-  const tournamentOver = !!finalMatch;
-  const winner = tournamentOver
-    ? (await computeStandings(supabase))[0] ?? null
-    : null;
+  // Banner de ganador. Modo normal: al terminar el torneo (final jugada), el 1º
+  // de la clasificación. Modo PREVIEW (solo admin): ?ganador=<slug> fuerza el
+  // banner para comprobar la imagen antes del día de la final.
+  const previewName =
+    profile.is_admin && typeof searchParams?.ganador === "string"
+      ? searchParams.ganador.trim()
+      : "";
+
+  let winner: { display_name: string } | null = null;
+  let isPreview = false;
+
+  if (previewName) {
+    isPreview = true;
+    const slug = playerSlug(previewName);
+    const { data: profs } = await supabase.from("profiles").select("display_name");
+    const match = (profs ?? []).find((p) => playerSlug(p.display_name) === slug);
+    winner = { display_name: match?.display_name ?? previewName };
+  } else {
+    const { data: finalMatch } = await supabase
+      .from("matches")
+      .select("id")
+      .eq("stage", "FINAL")
+      .eq("status", "FINISHED")
+      .limit(1)
+      .maybeSingle();
+    if (finalMatch) winner = (await computeStandings(supabase))[0] ?? null;
+  }
 
   return (
     <div className="space-y-6">
@@ -62,6 +81,7 @@ export default async function HomePage() {
         <WinnerBanner
           name={winner.display_name}
           slug={playerSlug(winner.display_name)}
+          preview={isPreview}
         />
       )}
 

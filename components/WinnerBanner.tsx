@@ -11,14 +11,22 @@ import { useState } from "react";
 export default function WinnerBanner({
   name,
   slug,
+  preview = false,
 }: {
   name: string;
   slug: string;
+  preview?: boolean;
 }) {
   const [ext, setExt] = useState<"jpg" | "png" | null>("jpg");
 
   return (
     <section className="overflow-hidden rounded-2xl border border-gold bg-gradient-to-b from-yellow-50 to-white text-center shadow-sm">
+      {preview && (
+        <p className="bg-amber-100 px-4 py-1 text-xs font-medium text-amber-800">
+          👁️ Vista previa (solo la ves tú como admin) · busca /ganadores/{slug}
+          .jpg o .png
+        </p>
+      )}
       <div className="px-4 pt-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">
           🏆 Ganador de la porra
