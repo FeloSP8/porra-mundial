@@ -30,6 +30,7 @@ import {
 } from "@/lib/predictionStats";
 import StatsView from "@/components/StatsView";
 import PredictionStatsView from "@/components/PredictionStatsView";
+import { computeStandings } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,7 @@ export default async function EstadisticasPage() {
     <div>
       <h1 className="text-2xl font-bold">📈 Estadísticas</h1>
       <p className="text-sm text-slate-600">
-        Aciertos sobre lo ya jugado y lo que pronostica la peña en la próxima
-        ronda.
+        Compendio de aciertos: clasificación, fase por fase y global.
       </p>
     </div>
   );
@@ -164,24 +164,20 @@ export default async function EstadisticasPage() {
     bracket: bracket_,
   };
 
-  // --- Estadísticas de la ÚLTIMA fase jugada, solo esa (p.ej. dieciseisavos) ---
+  // --- Aciertos POR FASE (cada fase jugada, en orden) ---
   const { data: phaseRows } = await supabase
     .from("phases")
     .select("id, key, name, order")
     .neq("key", "bracket")
     .order("order");
   const phasesOrdered = phaseRows ?? [];
-  const lastPlayed = [...phasesOrdered]
-    .reverse()
-    .find((p) =>
-      allMatches.some((m) => m.phase_id === p.id && m.status === "FINISHED")
-    );
 
-  const lastMatches: ResultMatch[] = lastPlayed
-    ? allMatches
+  const perPhase = phasesOrdered
+    .map((p) => {
+      const pm: ResultMatch[] = allMatches
         .filter(
           (m) =>
-            m.phase_id === lastPlayed.id &&
+            m.phase_id === p.id &&
             m.status === "FINISHED" &&
             m.home_score !== null &&
             m.away_score !== null
@@ -193,14 +189,19 @@ export default async function EstadisticasPage() {
           group_label: m.group_label,
           home_score: m.home_score as number,
           away_score: m.away_score as number,
-        }))
-    : [];
-  const lastMatchIds = new Set(lastMatches.map((m) => m.id));
-  const lastPreds = preds.filter((p) => lastMatchIds.has(p.match_id));
-  const lastPhaseStats =
-    lastPlayed && lastMatches.length > 0
-      ? accuracyBlock(lastMatches, lastPreds, users)
-      : null;
+        }));
+      if (pm.length === 0) return null;
+      const ids = new Set(pm.map((m) => m.id));
+      const pp = preds.filter((pr) => ids.has(pr.match_id));
+      return { name: p.name, stats: accuracyBlock(pm, pp, users) };
+    })
+    .filter(Boolean) as { name: string; stats: ReturnType<typeof accuracyBlock> }[];
+
+  // --- Podio / clasificación ---
+  const standings = await computeStandings(supabase);
+  const tournamentOver = allMatches.some(
+    (m) => m.stage === "FINAL" && m.status === "FINISHED"
+  );
 
   // ---------------------------------------------------------------------------
   //  Consenso de la PRÓXIMA ronda ya enviada pero aún sin jugar (p.ej. octavos).
@@ -218,15 +219,17 @@ export default async function EstadisticasPage() {
     <div className="space-y-6">
       {header}
 
-      {/* 1) Última fase jugada, solo esa. */}
-      {lastPhaseStats && lastPlayed && (
+      {/* Podio */}
+      {standings.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">📊 {lastPlayed.name}</h2>
-          <StatsView stats={lastPhaseStats} />
+          <h2 className="text-lg font-semibold">
+            🏆 {tournamentOver ? "Clasificación final" : "Clasificación"}
+          </h2>
+          <Podium rows={standings} />
         </section>
       )}
 
-      {/* 2) Predicciones de la próxima ronda (octavos). */}
+      {/* Predicciones de la próxima ronda (si la hay). */}
       {predictionStats && (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">
@@ -236,11 +239,44 @@ export default async function EstadisticasPage() {
         </section>
       )}
 
-      {/* 3) Estadísticas generales (todas las fases jugadas). */}
+      {/* Aciertos por fase. */}
+      {perPhase.map((ph, i) => (
+        <section key={i} className="space-y-3">
+          <h2 className="text-lg font-semibold">📊 {ph.name}</h2>
+          <StatsView stats={ph.stats} />
+        </section>
+      ))}
+
+      {/* Estadísticas generales (todas las fases jugadas). */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">🌍 Estadísticas generales</h2>
         <StatsView stats={generalStats} />
       </section>
+    </div>
+  );
+}
+
+/** Podio compacto: los 3 primeros destacados + resto en lista. */
+function Podium({ rows }: { rows: { display_name: string; total: number }[] }) {
+  const medal = (i: number) => ["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <ol className="space-y-1.5">
+        {rows.map((r, i) => (
+          <li
+            key={i}
+            className={`flex items-center justify-between gap-2 ${
+              i < 3 ? "text-base font-semibold" : "text-sm"
+            }`}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="w-6 text-center">{medal(i)}</span>
+              <span className="truncate">{r.display_name}</span>
+            </span>
+            <span className="tabular-nums text-pitch">{r.total}</span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
