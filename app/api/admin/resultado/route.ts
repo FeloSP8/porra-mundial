@@ -14,9 +14,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: guard.status });
   }
 
-  const { matchId, homeScore, awayScore, clear } = await request.json();
+  const { matchId, homeScore, awayScore, clear, winner: winnerInput } =
+    await request.json();
   if (typeof matchId !== "number") {
     return NextResponse.json({ error: "matchId requerido" }, { status: 400 });
+  }
+  if (
+    winnerInput !== undefined &&
+    winnerInput !== "HOME_TEAM" &&
+    winnerInput !== "AWAY_TEAM"
+  ) {
+    return NextResponse.json({ error: "winner inválido" }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -47,12 +55,16 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    // El marcador manual se interpreta como el resultado a los 90'. Derivamos
-    // `winner` del propio marcador cuando es decisivo; si es empate (cruce a
-    // prórroga/penaltis) no podemos saber el ganador real desde aquí y lo
-    // dejamos como DRAW (el cuadro no acreditará campeón hasta que la API dé
-    // el ganador real).
-    const winner = h > a ? "HOME_TEAM" : a > h ? "AWAY_TEAM" : "DRAW";
+    // El marcador manual se interpreta como el resultado a los 90'. Si es
+    // decisivo, `winner` sale del propio marcador. Si es empate (cruce a
+    // prórroga/penaltis), usamos el ganador que haya elegido el admin; si no
+    // eligió ninguno, queda DRAW (el cuadro no acreditará campeón).
+    const winner =
+      h > a
+        ? "HOME_TEAM"
+        : a > h
+        ? "AWAY_TEAM"
+        : winnerInput ?? "DRAW";
     await admin
       .from("matches")
       .update({
