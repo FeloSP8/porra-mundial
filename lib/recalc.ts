@@ -508,3 +508,49 @@ export async function runFullUpdate(admin: SupabaseClient) {
 
   return log;
 }
+
+/**
+ * Ejecuta runFullUpdate y REGISTRA el resultado en `cron_runs` (duración, si
+ * fue bien, si football-data falló y el resumen completo). Lo usan tanto el
+ * cron como el botón del panel, para poder auditar después si el cron falló.
+ *
+ * Nunca lanza por culpa del propio registro: si el insert falla, se ignora.
+ */
+export async function runFullUpdateLogged(
+  admin: SupabaseClient,
+  source: "cron" | "admin"
+): Promise<{
+  log: Record<string, unknown>;
+  ok: boolean;
+  footballDataError: string | null;
+  error: string | null;
+  durationMs: number;
+}> {
+  const start = Date.now();
+  let log: Record<string, unknown> = {};
+  let error: string | null = null;
+  try {
+    log = await runFullUpdate(admin);
+  } catch (e: unknown) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  const durationMs = Date.now() - start;
+  const footballDataError =
+    typeof log.footballDataError === "string" ? log.footballDataError : null;
+  const ok = error === null;
+
+  try {
+    await admin.from("cron_runs").insert({
+      source,
+      ok,
+      duration_ms: durationMs,
+      football_data_error: footballDataError,
+      error,
+      summary: log,
+    });
+  } catch {
+    // El registro es best-effort: no rompemos la actualización si falla.
+  }
+
+  return { log, ok, footballDataError, error, durationMs };
+}

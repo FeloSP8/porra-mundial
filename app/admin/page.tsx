@@ -6,6 +6,7 @@ import PhaseControls from "@/components/admin/PhaseControls";
 import ResultEditor from "@/components/admin/ResultEditor";
 import RecalcButton from "@/components/admin/RecalcButton";
 import UpdateButton from "@/components/admin/UpdateButton";
+import CronRuns, { type CronRun } from "@/components/admin/CronRuns";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,13 @@ export default async function AdminPage() {
     .from("matches")
     .select("*")
     .order("kickoff", { nullsFirst: false });
+
+  // Últimas ejecuciones de la rutina de actualización (cron + botón admin).
+  const { data: runs } = await admin
+    .from("cron_runs")
+    .select("*")
+    .order("ran_at", { ascending: false })
+    .limit(15);
 
   const matchList = (matches ?? []) as Match[];
 
@@ -74,6 +82,7 @@ export default async function AdminPage() {
             cuando ya se hayan jugado partidos.
           </p>
           <UpdateButton />
+          <CronRuns runs={(runs ?? []) as CronRun[]} />
         </section>
 
         {/* RECÁLCULO (solo recalcula, sin llamar a football-data) */}

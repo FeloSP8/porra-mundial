@@ -55,6 +55,23 @@ create index if not exists idx_matches_phase on public.matches (phase_id);
 create index if not exists idx_matches_status on public.matches (status);
 
 -- ----------------------------------------------------------------------------
+--  REGISTRO DE EJECUCIONES de la rutina de actualización (cron + botón admin).
+--  Cada fila = una ejecución de runFullUpdate, para auditar si el cron falló.
+-- ----------------------------------------------------------------------------
+create table if not exists public.cron_runs (
+  id                  bigint generated always as identity primary key,
+  ran_at              timestamptz not null default now(),
+  source              text not null default 'cron', -- 'cron' | 'admin'
+  ok                  boolean not null,             -- terminó sin lanzar error
+  duration_ms         integer,
+  football_data_error text,                          -- null si el sync fue bien
+  error               text,                          -- error global si petó todo
+  summary             jsonb                          -- log completo de runFullUpdate
+);
+create index if not exists idx_cron_runs_ran_at on public.cron_runs (ran_at desc);
+alter table public.cron_runs enable row level security;
+
+-- ----------------------------------------------------------------------------
 --  PRONÓSTICOS DE PARTIDOS
 -- ----------------------------------------------------------------------------
 create table if not exists public.predictions (
