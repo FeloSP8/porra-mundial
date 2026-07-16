@@ -5,7 +5,9 @@ import { phaseAcceptsSubmissions, type Phase } from "@/lib/types";
 import PhaseProgress from "@/components/PhaseProgress";
 import LeaderboardTable from "@/components/LeaderboardTable";
 import HomeMatchdayCard from "@/components/HomeMatchdayCard";
+import WinnerBanner from "@/components/WinnerBanner";
 import { loadMatchdayData } from "@/lib/loadMatchdayData";
+import { computeStandings, playerSlug } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +43,28 @@ export default async function HomePage() {
 
   const matchdayData = await loadMatchdayData(profile.id);
 
+  // ¿Ha terminado el torneo? (final jugada) → mostramos al ganador de la porra.
+  const { data: finalMatch } = await supabase
+    .from("matches")
+    .select("id")
+    .eq("stage", "FINAL")
+    .eq("status", "FINISHED")
+    .limit(1)
+    .maybeSingle();
+  const tournamentOver = !!finalMatch;
+  const winner = tournamentOver
+    ? (await computeStandings(supabase))[0] ?? null
+    : null;
+
   return (
     <div className="space-y-6">
+      {winner && (
+        <WinnerBanner
+          name={winner.display_name}
+          slug={playerSlug(winner.display_name)}
+        />
+      )}
+
       <div>
         <h1 className="text-2xl font-bold">Hola, {profile.display_name} 👋</h1>
         <p className="text-slate-600">Bienvenido a la porra del Mundial 2026.</p>
